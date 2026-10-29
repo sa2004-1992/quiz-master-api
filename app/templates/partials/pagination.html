@@ -1,0 +1,9 @@
+{% macro pager(endpoint, data) %}
+{% if data.pages > 1 %}
+<nav class="pagination" aria-label="Pagination">
+  {% if data.page > 1 %}<a class="btn btn-ghost" href="{{ url_for(endpoint, page=data.page-1, **kwargs) }}">&laquo; Previous</a>{% endif %}
+  <span class="muted">Page {{ data.page }} of {{ data.pages }} &middot; {{ data.total }} record{{ '' if data.total == 1 else 's' }}</span>
+  {% if data.page < data.pages %}<a class="btn btn-ghost" href="{{ url_for(endpoint, page=data.page+1, **kwargs) }}">Next &raquo;</a>{% endif %}
+</nav>
+{% endif %}
+{% endmacro %}

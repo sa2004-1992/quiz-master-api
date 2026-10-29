@@ -1,0 +1,28 @@
+{% from "partials/icons.html" import icon %}
+{% set ep = request.endpoint or '' %}
+{% set dash = ['pages.profile','pages.all_quiz','pages.history','pages.leaderboard','pages.performance','pages.achievements','pages.bookmarks'] %}
+<aside class="sidebar" id="sidebar" aria-label="Main navigation">
+  <a class="brand" href="{{ url_for('pages.home') }}">{% include "partials/logo.html" %}<span>Quiz Master</span></a>
+  <nav>
+    <a class="nav-item {{ 'active' if ep == 'pages.home' }}" href="{{ url_for('pages.home') }}">{{ icon('home') }}<span>Home</span></a>
+    <a class="nav-item {{ 'active' if ep == 'pages.quizzes' }}" href="{{ url_for('pages.quizzes') }}">{{ icon('quiz') }}<span>Quizzes</span></a>
+    <details class="nav-group" {{ 'open' if ep in dash }}>
+      <summary class="nav-item">{{ icon('dashboard') }}<span>Dashboard</span><span class="chev">{{ icon('chevron') }}</span></summary>
+      <div class="nav-sub">
+        <a class="nav-item {{ 'active' if ep == 'pages.profile' }}" href="{{ url_for('pages.profile') }}">{{ icon('user') }}<span>Profile</span></a>
+        <a class="nav-item {{ 'active' if ep == 'pages.all_quiz' }}" href="{{ url_for('pages.all_quiz') }}">{{ icon('list') }}<span>All Quiz</span></a>
+        <a class="nav-item {{ 'active' if ep == 'pages.history' }}" href="{{ url_for('pages.history') }}">{{ icon('history') }}<span>History</span></a>
+        <a class="nav-item {{ 'active' if ep == 'pages.leaderboard' }}" href="{{ url_for('pages.leaderboard') }}">{{ icon('trophy') }}<span>Leaderboard</span></a>
+        <a class="nav-item {{ 'active' if ep == 'pages.performance' }}" href="{{ url_for('pages.performance') }}">{{ icon('chart') }}<span>My Performance</span></a>
+        <a class="nav-item {{ 'active' if ep == 'pages.achievements' }}" href="{{ url_for('pages.achievements') }}">{{ icon('medal') }}<span>Achievements &amp; Badges</span></a>
+        <a class="nav-item {{ 'active' if ep == 'pages.bookmarks' }}" href="{{ url_for('pages.bookmarks') }}">{{ icon('bookmark') }}<span>Bookmarked Questions</span></a>
+      </div>
+    </details>
+    <a class="nav-item {{ 'active' if ep == 'pages.feedback' }}" href="{{ url_for('pages.feedback') }}">{{ icon('message') }}<span>Feedback</span></a>
+    <button type="button" class="nav-item nav-button" id="themeToggle" aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">{{ icon('moon') }}<span>Dark Mode</span><span class="switch" aria-hidden="true"></span></button>
+    <form method="post" action="{{ url_for('auth.logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="nav-item nav-button">{{ icon('logout') }}<span>Logout</span></button>
+    </form>
+  </nav>
+</aside>
