@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block title %}Achievements &amp; Badges{% endblock %}
+{% block heading %}Achievements &amp; Badges{% endblock %}
+{% block content %}
+<div class="grid badge-grid">
+  {% for b in badges %}
+  <article class="card badge {{ 'earned' if b.earned else 'locked' }}">
+    {{ icon('medal') }}<h3>{{ b.name }}</h3><p class="muted">{{ b.description }}</p>
+    <span class="pill">{{ 'Earned' if b.earned else 'Locked' }}</span>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Quiz{% endblock %}
+{% block heading %}Quiz{% endblock %}
+{% block body_class %}quiz-page{% endblock %}
+{% block content %}
+<div id="quiz" data-game-id="{{ game.id }}" data-base="{{ url_for('quiz.state', game_id=game.id).rsplit('/state', 1)[0] }}">
+  <section class="quiz-header card">
+    <div><span class="pill" id="qType"></span> <span class="pill pill-alt" id="qCategory"></span></div>
+    <div class="quiz-meta">
+      <div><span class="stat-label">Question</span><strong id="qNumber">–</strong></div>
+      <div><span class="stat-label">Score</span><strong id="qScore">0</strong></div>
+      <div><span class="stat-label">Time</span><strong id="qTimer">00:00</strong></div>
+      <div><span class="stat-label">Hints left</span><strong id="qHints">–</strong></div>
+    </div>
+  </section>
+  <section class="card question-card" id="questionCard" aria-live="polite">
+    <div class="paused-banner" id="pausedBanner" hidden>Quiz paused — press Resume to continue.</div>
+    <div id="questionBody">
+      <h2 id="qText" class="question-text">Loading…</h2>
+      <div class="options" id="options" role="group" aria-label="Answer options"></div>
+      <div class="feedback" id="feedback" hidden>
+        <p class="verdict" id="verdict"></p>
+        <p id="explanation"></p>
+        <button type="button" class="btn btn-ghost btn-sm" id="bookmarkBtn">Bookmark question</button>
+      </div>
+    </div>
+  </section>
+  <div class="quiz-actions">
+    <button type="button" class="btn btn-ghost" id="prevBtn">&laquo; Previous</button>
+    <button type="button" class="btn btn-ghost" id="hintBtn">Hint</button>
+    <button type="button" class="btn btn-ghost" id="pauseBtn">Pause</button>
+    <button type="button" class="btn btn-primary" id="nextBtn">Next &raquo;</button>
+  </div>
+  <div class="quiz-actions end">
+    <button type="button" class="btn btn-danger-ghost" id="exitBtn">Exit</button>
+    <button type="button" class="btn btn-success" id="finishBtn">Finish &amp; Save</button>
+  </div>
+  <p class="muted small" id="quizMessage" role="status"></p>
+</div>
+<dialog id="resultDialog" class="dialog"><h2>Quiz saved!</h2><p id="resultBody"></p>
+  <div class="dialog-actions"><a class="btn btn-primary" id="resultLink" href="#">View History</a></div></dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/quiz.js') }}" defer></script>{% endblock %}

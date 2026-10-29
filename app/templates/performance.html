@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}My Performance{% endblock %}
+{% block heading %}My Performance{% endblock %}
+{% block content %}
+<div class="grid grid-4">
+  <div class="stat"><span class="stat-label">Games saved</span><strong>{{ data.overall.games_played }}</strong></div>
+  <div class="stat"><span class="stat-label">Total score</span><strong>{{ data.overall.total_score }}</strong></div>
+  <div class="stat"><span class="stat-label">Best game</span><strong>{{ data.overall.best_score }}</strong></div>
+  <div class="stat"><span class="stat-label">Accuracy</span><strong>{{ data.overall.accuracy }}%</strong></div>
+</div>
+<h3 class="section-title">By quiz type</h3>
+<div class="table-wrap"><table class="table">
+  <thead><tr><th>Quiz type</th><th class="num">Games</th><th class="num">Answered</th><th class="num">Accuracy</th><th class="num">Score</th><th>Time</th></tr></thead>
+  <tbody>{% for b in data.breakdown %}<tr><td data-label="Quiz type">{{ b.label }}</td><td data-label="Games" class="num">{{ b.games }}</td><td data-label="Answered" class="num">{{ b.answered }}</td><td data-label="Accuracy" class="num">{{ b.accuracy }}%</td><td data-label="Score" class="num">{{ b.score }}</td><td data-label="Time">{{ b.time|duration }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<h3 class="section-title">Last {{ data.recent_scores|length }} game scores</h3>
+{% if data.recent_scores %}
+{% set top = data.recent_scores|max or 1 %}
+<div class="bars" role="img" aria-label="Recent game scores">
+  {% for s in data.recent_scores %}<div class="bar-col"><div class="bar" data-value="{{ s }}" data-max="{{ top }}"></div><span>{{ s }}</span></div>{% endfor %}
+</div>
+{% else %}<div class="card empty"><p>Save a quiz to see your performance.</p></div>{% endif %}
+{% endblock %}

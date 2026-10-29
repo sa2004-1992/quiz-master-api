@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block title %}Quizzes{% endblock %}
+{% block heading %}Quizzes{% endblock %}
+{% block content %}
+<form class="search" method="get" action="{{ url_for('pages.quizzes') }}" role="search">
+  <label class="sr-only" for="categorySearch">Search categories</label>
+  {{ icon('search') }}
+  <input id="categorySearch" name="q" type="search" value="{{ q }}" placeholder="Search categories" autocomplete="off" data-category-search>
+</form>
+<p class="muted" id="noResults" hidden>No categories match your search.</p>
+<div class="grid category-grid" id="categoryGrid">
+  {% for c in categories %}
+  <form method="post" action="{{ url_for('quiz.start_category', category_id=c.id) }}" class="category-card card" data-name="{{ c.name|lower }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="quizzes">
+    <span class="category-name">{{ c.name }}</span>
+    <button class="btn btn-primary btn-sm" type="submit">{{ 'Continue' if c.id in active else 'Start' }}</button>
+  </form>
+  {% else %}
+  <p class="muted">No categories match your search.</p>
+  {% endfor %}
+</div>
+{% endblock %}

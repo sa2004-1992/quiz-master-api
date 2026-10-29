@@ -1,0 +1,44 @@
+{% from "partials/icons.html" import icon %}
+<!doctype html>
+<html lang="en" data-theme="{{ theme }}" data-theme-source="server">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}Quiz Master{% endblock %} · Quiz Master</title>
+  <link rel="icon" href="{{ url_for('static', filename='images/logo.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="{{ url_for('static', filename='js/theme-init.js') }}"></script>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<div class="app-shell">
+  {% include "partials/sidebar.html" %}
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <div class="main">
+    <header class="topbar">
+      <button type="button" class="icon-btn" id="menuToggle" aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">{{ icon('menu') }}</button>
+      <a class="topbar-brand" href="{{ url_for('pages.home') }}">{% include "partials/logo.html" %}<strong>Quiz Master</strong></a>
+      <h1 class="topbar-title">{% block heading %}{% endblock %}</h1>
+      <a class="user-chip" href="{{ url_for('pages.profile') }}">{{ icon('user') }}<span>{{ current_user.username }}</span></a>
+    </header>
+    <main class="content" id="main">
+      {% include "partials/flash.html" %}
+      {% block content %}{% endblock %}
+      <footer class="content-footer muted small">Some questions courtesy of <a href="https://opentdb.com" rel="noopener">Open Trivia DB</a> (CC BY-SA 4.0).</footer>
+    </main>
+  </div>
+</div>
+<dialog id="confirmDialog" class="dialog">
+  <form method="dialog">
+    <h2 id="confirmTitle">Are you sure?</h2>
+    <p id="confirmBody"></p>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" value="cancel">Cancel</button>
+      <button class="btn btn-danger" value="ok" id="confirmOk">Confirm</button>
+    </div>
+  </form>
+</dialog>
+<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block title %}All Quiz{% endblock %}
+{% block heading %}All Quiz{% endblock %}
+{% block content %}
+<article class="card">
+  <h2>All Quiz</h2>
+  <p>Questions cycle through all {{ total_categories }} categories in a fixed order, one category after another, then start over with fresh questions. Each game covers up to {{ per_game }} questions and your place is saved when you finish &amp; save.</p>
+  {% if saved %}
+  <dl class="meta">
+    <div><dt>Round</dt><dd>{{ round_no }}</dd></div>
+    <div><dt>Up next</dt><dd>{{ next_category }}</dd></div>
+  </dl>
+  {% endif %}
+  <form method="post" action="{{ url_for('quiz.start_all') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="all_quiz">
+    <button class="btn btn-primary" type="submit">{{ icon('play') }} {{ 'Continue Quiz' if (active or saved) else 'Start Quiz' }}</button>
+  </form>
+</article>
+{% endblock %}

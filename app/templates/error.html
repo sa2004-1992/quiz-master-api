@@ -1,0 +1,7 @@
+{% extends "auth_base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ status }} · {{ title }}</h1>
+<p class="muted">{{ message }}</p>
+<p><a class="btn btn-primary" href="{{ url_for('pages.home') }}">Back to Home</a></p>
+{% endblock %}

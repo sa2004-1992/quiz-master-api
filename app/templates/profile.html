@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block heading %}Profile{% endblock %}
+{% block content %}
+<div class="page-actions">
+  <button type="button" class="btn btn-danger" data-open-clear>Clear All Data</button>
+</div>
+<article class="card">
+  <h2>Account</h2>
+  <dl class="details">
+    <div><dt>Full Name</dt><dd>{{ current_user.full_name }}</dd></div>
+    <div><dt>Username</dt><dd>{{ current_user.username }}</dd></div>
+    <div><dt>Email Address</dt><dd>{{ current_user.email }}</dd></div>
+    <div><dt>Gender</dt><dd>{{ current_user.gender }}</dd></div>
+  </dl>
+</article>
+<h3 class="section-title">Category Quiz Statistics</h3>
+<div class="grid grid-4">
+  <div class="stat"><span class="stat-label">Games played</span><strong>{{ stats.games }}</strong></div>
+  <div class="stat"><span class="stat-label">Questions answered</span><strong>{{ stats.answered }}</strong></div>
+  <div class="stat"><span class="stat-label">Correct answers</span><strong>{{ stats.correct }}</strong></div>
+  <div class="stat"><span class="stat-label">Accuracy</span><strong>{{ stats.accuracy }}%</strong></div>
+  <div class="stat"><span class="stat-label">Total score</span><strong>{{ stats.score }}</strong></div>
+  <div class="stat"><span class="stat-label">Best game score</span><strong>{{ stats.best }}</strong></div>
+  <div class="stat"><span class="stat-label">Hints used</span><strong>{{ stats.hints }}</strong></div>
+  <div class="stat"><span class="stat-label">Total time</span><strong>{{ stats.time|duration }}</strong></div>
+</div>
+<dialog id="clearDialog" class="dialog">
+  <form method="post" action="{{ url_for('pages.clear_data') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Clear all quiz data?</h2>
+    <p>This permanently deletes <strong>your</strong> quiz history, saved scores and answers, progress in every quiz (so questions start over), daily challenge records and streaks, bookmarks, and any quiz in progress. Your account (name, username, email, gender, password) is kept. This cannot be undone.</p>
+    <label for="confirmText">Type <strong>DELETE</strong> to confirm</label>
+    <input id="confirmText" name="confirm" type="text" autocomplete="off" required pattern="DELETE">
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" data-close-clear>Cancel</button>
+      <button type="submit" class="btn btn-danger">Clear my data</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

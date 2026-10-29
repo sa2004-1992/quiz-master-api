@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-theme-source="local">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Welcome{% endblock %} · Quiz Master</title>
+  <link rel="icon" href="{{ url_for('static', filename='images/logo.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="{{ url_for('static', filename='js/theme-init.js') }}"></script>
+</head>
+<body class="auth-body">
+  <main class="auth-wrap">
+    <div class="auth-card card">
+      <div class="auth-brand">{% include "partials/logo.html" %}<span>Quiz Master</span></div>
+      {% include "partials/flash.html" %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</body>
+</html>

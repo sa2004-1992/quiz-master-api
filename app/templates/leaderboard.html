@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "partials/pagination.html" import pager %}
+{% block title %}Leaderboard{% endblock %}
+{% block heading %}Leaderboard{% endblock %}
+{% block content %}
+<nav class="tabs" aria-label="Date range">
+  {% for key, label in ranges.items() %}<a class="tab {{ 'active' if key == range_name }}" href="{{ url_for('pages.leaderboard', range=key) }}">{{ label }}</a>{% endfor %}
+</nav>
+{% if data["items"] %}
+<div class="table-wrap"><table class="table">
+  <thead><tr><th>Rank</th><th>Username</th><th>Quiz Type</th><th class="num">Games Played</th><th class="num">Total Score</th><th>Total Time</th></tr></thead>
+  <tbody>{% for r in data["items"] %}
+    <tr class="{{ 'me' if r.uid == current_user.id }}"><td data-label="Rank">{{ r.rank }}</td><td data-label="Username">{{ r.username }}</td><td data-label="Quiz Type">{{ r.quiz }}</td>
+        <td data-label="Games Played" class="num">{{ r.games }}</td><td data-label="Total Score" class="num">{{ r.score }}</td><td data-label="Total Time">{{ r.time }}</td></tr>
+  {% endfor %}</tbody>
+</table></div>
+{{ pager('pages.leaderboard', data, range=range_name) }}
+<p class="muted small">Ranking: total score (high to low), then total time (low to high), then username. Only saved games count.</p>
+{% else %}<div class="card empty"><p>No results for this period yet.</p></div>{% endif %}
+{% endblock %}

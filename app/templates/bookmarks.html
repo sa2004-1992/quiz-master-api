@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Bookmarked Questions{% endblock %}
+{% block heading %}Bookmarked Questions{% endblock %}
+{% block content %}
+{% for q in items %}
+<article class="card bookmark">
+  <span class="pill">{{ q.category }}</span>
+  <h3>{{ q.text }}</h3>
+  <ul class="plain">{% for k, v in q.options.items() %}<li class="{{ 'correct-text' if k == q.correct }}"><strong>{{ k }}.</strong> {{ v }}{% if k == q.correct %} ✓{% endif %}</li>{% endfor %}</ul>
+  <p class="muted">{{ q.explanation }}</p>
+  <form method="post" action="{{ url_for('pages.remove_bookmark', question_id=q.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-ghost btn-sm" type="submit">Remove bookmark</button></form>
+</article>
+{% else %}
+<div class="card empty"><p>No bookmarked questions yet. Use the bookmark button on an answered question during a quiz.</p></div>
+{% endfor %}
+{% endblock %}

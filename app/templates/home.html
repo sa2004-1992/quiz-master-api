@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
+{% block title %}Home{% endblock %}
+{% block heading %}Home{% endblock %}
+{% block content %}
+<section class="welcome"><h2>Welcome, {{ current_user.full_name }}!</h2><p class="muted">Pick a challenge and keep your streak alive.</p></section>
+<div class="grid grid-2">
+  <article class="card daily-card" aria-labelledby="daily-title">
+    <div class="card-head">{{ icon('calendar') }}<h3 id="daily-title">Daily Challenge</h3></div>
+    <p class="muted">A fresh set of questions every day. One completed challenge per day, with {{ daily.hints }} hints to help you.</p>
+    <dl class="meta">
+      <div><dt>Questions</dt><dd>{{ daily.questions }}</dd></div>
+      <div><dt>Current streak</dt><dd>{{ icon('flame') }} {{ daily.current }} day{{ '' if daily.current == 1 else 's' }}</dd></div>
+      <div><dt>Longest streak</dt><dd>{{ daily.longest }} day{{ '' if daily.longest == 1 else 's' }}</dd></div>
+    </dl>
+    {% if daily.completed %}
+      <div class="status-done">{{ icon('check') }} Completed Today{% if daily.score is not none %} &middot; Score {{ daily.score }}{% endif %}</div>
+    {% else %}
+      <form method="post" action="{{ url_for('quiz.start_daily') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="home">
+        <button class="btn btn-primary" type="submit">{{ icon('play') }} {{ 'Continue Daily Challenge' if daily.in_progress else 'Start Daily Challenge' }}</button>
+      </form>
+    {% endif %}
+  </article>
+  <article class="card" aria-labelledby="all-title">
+    <div class="card-head">{{ icon('list') }}<h3 id="all-title">Play All Quiz</h3></div>
+    <p class="muted">One endless sequence through all 56 categories, in order. Your place is saved between sessions.</p>
+    <form method="post" action="{{ url_for('quiz.start_all') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="home">
+      <button class="btn btn-primary" type="submit">{{ icon('play') }} {{ 'Continue All Quiz' if all_active else 'Play All Quiz' }}</button>
+    </form>
+  </article>
+</div>
+<h3 class="section-title">Your Statistics</h3>
+<div class="grid grid-4">
+  <div class="stat"><span class="stat-label">Last category played</span><strong>{{ stats.last_category or '—' }}</strong></div>
+  <div class="stat"><span class="stat-label">Most time played</span><strong>{{ stats.most_time_category or '—' }}</strong>{% if stats.most_time_category %}<small>{{ stats.most_time_seconds|duration }}</small>{% endif %}</div>
+  <div class="stat"><span class="stat-label">Most questions answered</span><strong>{{ stats.most_questions_category or '—' }}</strong>{% if stats.most_questions_category %}<small>{{ stats.most_questions_count }} questions</small>{% endif %}</div>
+  <div class="stat"><span class="stat-label">Total questions answered</span><strong>{{ stats.total_questions_answered }}</strong></div>
+  <div class="stat"><span class="stat-label">Games saved</span><strong>{{ stats.games_played }}</strong></div>
+  <div class="stat"><span class="stat-label">Total score</span><strong>{{ stats.total_score }}</strong></div>
+  <div class="stat"><span class="stat-label">Accuracy</span><strong>{{ stats.accuracy }}%</strong></div>
+  <div class="stat"><span class="stat-label">Total play time</span><strong>{{ stats.total_time|duration }}</strong></div>
+</div>
+{% endblock %}
