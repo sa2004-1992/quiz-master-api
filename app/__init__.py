@@ -106,7 +106,9 @@ def register_hooks(app):
         return render_template("error.html", status=status, title=title, message=message), status
 
     @app.errorhandler(CSRFError)
-    def csrf_error(_e):
+    def csrf_error(e):
+        log.warning("CSRF rejected: %s | path=%s host=%s session_cookie_sent=%s", e.description,
+                    request.path, request.host, "session" in request.cookies)
         return error_response(400, "Request expired", "Your session expired or the request was invalid. "
                                                      "Please reload the page and try again.")
 
@@ -145,6 +147,18 @@ def register_cli(app):
         """Create missing tables and seed categories + starter questions (non-destructive)."""
         init_database(app)
         click.echo("Database ready.")
+
+    @app.cli.command("import-questions")
+    @click.option("--source", type=click.Choice(["opentdb", "trivia_api", "all"]), default="all", show_default=True)
+    @click.option("--rounds", default=1, show_default=True, help="Repeat the import to collect more questions.")
+    @click.option("--pool", type=click.Choice(["category", "daily"]), default="category", show_default=True)
+    def import_cmd(source, rounds, pool):
+        """Import ready-made questions (Open Trivia DB / The Trivia API) into the database."""
+        from .services.question_sources import import_all
+        sources = ("opentdb", "trivia_api") if source == "all" else (source,)
+        with closing(new_session(app)) as s:
+            totals = import_all(s, sources, rounds, pool, progress=click.echo)
+        click.echo(f"Done: {totals['inserted']} new questions, {totals['rejected']} skipped.")
 
     @app.cli.command("generate-questions")
     @click.option("--category", "category_name", default=None, help="Category name (default: all).")
