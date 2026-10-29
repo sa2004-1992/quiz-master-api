@@ -169,3 +169,8 @@ def test_env_placeholders_are_ignored_and_bad_url_is_clear(monkeypatch):
         config.finalize(app)
     monkeypatch.undo()
     importlib.reload(config)
+
+
+def test_session_cookie_secure_in_production_config(tmp_path):
+    app = make_app(tmp_path, SESSION_COOKIE_SECURE=True)
+    assert app.config["SESSION_COOKIE_SECURE"] is True

@@ -309,3 +309,46 @@ def test_streak_display_resets_when_day_missed(app, client, user, db, fake_clock
     fake_clock.advance(days=2)
     html = client.get("/").get_data(as_text=True)
     assert "0 days" in html and "Longest streak" in html
+
+
+def test_endless_category_quiz_extends_without_repeats(app, client, user, db):
+    cid = cat_id(app, "Math")
+    add_questions(app, "Math", 18)  # 20 stored in total
+    gid = start(client, "category", cid)
+    assert state(client, gid)["total"] == 5
+    play_through(app, client, gid, 5)
+    assert api(client, gid, "next").status_code == 200  # end of batch -> more questions appended
+    st = state(client, gid)
+    assert st["total"] == 10 and st["current_index"] == 5
+    for _ in range(15):
+        answer(app, client, gid)
+        if api(client, gid, "next").status_code != 200:
+            break
+    ids = db.get(QuizGame, gid)
+    db.refresh(ids)
+    assert len(ids.question_ids) == len(set(ids.question_ids)) == 20  # all questions, never a repeat
+    summary = api(client, gid, "finish").get_json()["summary"]
+    assert summary["resolved"] >= 15
+    db.expire_all()
+    g = db.get(QuizGame, gid)
+    expected = g.seq_positions[summary["resolved"] - 1] + 1
+    assert db.get(UserCategoryProgress, (1, cid)).pointer == (expected % 20 if expected > 20 else expected)
+
+
+def test_category_with_few_questions_stops_instead_of_repeating(app, client, user):
+    gid = start(client, "category", cat_id(app, "Chess"))  # only 2 stored questions
+    answer(app, client, gid)
+    api(client, gid, "next")
+    answer(app, client, gid)
+    r = api(client, gid, "next")
+    assert r.status_code == 400 and "Finish" in r.get_json()["error"]
+
+
+def test_all_quiz_is_endless_and_daily_is_capped(app, client, user, db, fake_clock):
+    gid = start(client, "all")
+    play_through(app, client, gid, 6)
+    assert api(client, gid, "next").status_code == 200  # All Quiz keeps going (next round)
+    assert state(client, gid)["total"] > 6
+    d = start(client, "daily")
+    play_through(app, client, d, 4)
+    assert api(client, d, "next").status_code == 400  # Daily stays a fixed set
