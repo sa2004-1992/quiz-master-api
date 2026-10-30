@@ -1,4 +1,6 @@
 """Server-rendered pages: home, quizzes, all quiz, history, leaderboard, profile, etc."""
+from datetime import date
+
 from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template,
                    request, url_for)
 from sqlalchemy import select, text
@@ -9,7 +11,7 @@ from ..database import get_session
 from ..models import (Bookmark, Category, DailyQuestionSet, Feedback, PlayAllProgress, QuizGame,
                       UserDailyStreak, UserPreference)
 from ..services import daily_streak, quiz_engine, reports
-from ..services.user_data import clear_user_quiz_data
+from ..services.user_data import clear_all_quiz_data, clear_user_quiz_data
 from ..utils import clock
 
 bp = Blueprint("pages", __name__)
@@ -74,17 +76,57 @@ def all_quiz():
     active = db.scalars(select(QuizGame.id).where(
         QuizGame.user_id == g.user.id, QuizGame.active_key == "all")).first() is not None
     nxt = cats[pointer % len(cats)].name if cats else None
-    return render_template("all_quiz.html", pointer=pointer, round_no=pointer // max(len(cats), 1) + 1,
+    return render_template("all_quiz.html", o=reports.all_quiz_overview(db, g.user.id), pointer=pointer, round_no=pointer // max(len(cats), 1) + 1,
                            next_category=nxt, active=active, saved=prog is not None,
                            total_categories=len(cats), per_game=current_app.config["ALL_QUIZ_QUESTIONS"])
+
+
+@bp.route("/all-quiz/clear-data", methods=["POST"])
+@login_required
+def clear_all_quiz():
+    if (request.form.get("confirm") or "").strip() != "DELETE":
+        flash("Type DELETE to confirm clearing your All Quiz data.", "error")
+        return redirect(url_for("pages.all_quiz"))
+    clear_all_quiz_data(get_session(), g.user.id)
+    flash("Your All Quiz data has been cleared.", "success")
+    return redirect(url_for("pages.all_quiz"))
 
 
 @bp.route("/history")
 @login_required
 def history():
-    data = reports.history_page(get_session(), g.user.id, _page_arg(), current_app.config["PAGE_SIZE"],
-                                current_app.config["APP_TIMEZONE"])
-    return render_template("history.html", data=data)
+    db = get_session()
+    errors, filters = [], {}
+    q = (request.args.get("q") or "").strip()[:60]
+    if q:
+        filters["q"] = q
+    categories = list(db.scalars(select(Category).order_by(Category.position)))
+    category_id = None
+    raw_cat = (request.args.get("category") or "").strip()
+    if raw_cat:
+        if raw_cat.isdigit() and int(raw_cat) in {c.id for c in categories}:
+            category_id = int(raw_cat)
+            filters["category"] = category_id
+        else:
+            errors.append("Please choose a valid category.")
+    dates = {}
+    for key, label in (("start", "Start date"), ("end", "End date")):
+        raw = (request.args.get(key) or "").strip()
+        if raw:
+            try:
+                dates[key] = date.fromisoformat(raw)
+            except ValueError:
+                errors.append(f"{label} is not a valid date.")
+    if dates.get("start") and dates.get("end") and dates["start"] > dates["end"]:
+        errors.append("Start date must be on or before the end date.")
+        dates = {}
+    for key, value in dates.items():
+        filters[key] = value.isoformat()
+    data = reports.history_page(db, g.user.id, _page_arg(), current_app.config["PAGE_SIZE"],
+                                current_app.config["APP_TIMEZONE"], q=q or None, category_id=category_id,
+                                start=dates.get("start"), end=dates.get("end"))
+    return render_template("history.html", data=data, categories=categories, filters=filters,
+                           form=request.args, errors=errors)
 
 
 @bp.route("/leaderboard")
@@ -94,7 +136,7 @@ def leaderboard():
     if range_name not in reports.RANGES:
         abort(400)
     data = reports.leaderboard_page(get_session(), range_name, _page_arg(), current_app.config["PAGE_SIZE"],
-                                    current_app.config["APP_TIMEZONE"])
+                                    current_app.config["APP_TIMEZONE"], current_user_id=g.user.id)
     return render_template("leaderboard.html", data=data, range_name=range_name,
                            ranges=reports.RANGE_LABELS)
 
@@ -102,7 +144,9 @@ def leaderboard():
 @bp.route("/profile")
 @login_required
 def profile():
-    return render_template("profile.html", stats=reports.profile_stats(get_session(), g.user.id))
+    overview = reports.profile_overview(get_session(), g.user.id, request.args.get("sort", "questions"))
+    joined = clock.to_local(g.user.created_at, current_app.config["APP_TIMEZONE"]).strftime("%d %b %Y")
+    return render_template("profile.html", o=overview, joined=joined)
 
 
 @bp.route("/profile/clear-data", methods=["POST"])
