@@ -490,11 +490,13 @@ def finish_game(session, user_id, game_id):
     score = scoring.final_score([a.points for a in answers])
     elapsed = elapsed_seconds(game, now)  # excludes pauses; a paused game ends at the pause instant
     positions = list(game.seq_positions)
+    answered = sum(1 for a in answers if a.selected_option is not None)
+    correct = sum(1 for a in answers if a.is_correct)
     # Atomic claim: only one request can flip in_progress -> completed.
     claimed = session.execute(update(QuizGame).where(
         QuizGame.id == game.id, QuizGame.status == "in_progress").values(
         status="completed", active_key=None, finished_at=now, elapsed_seconds=elapsed, score=score,
-        paused_at=None)).rowcount
+        paused_at=None, answered_count=answered, correct_count=correct, wrong_count=answered - correct)).rowcount
     if claimed != 1:
         session.rollback()
         game = get_game(session, user_id, game_id)
