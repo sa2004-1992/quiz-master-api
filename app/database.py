@@ -2,7 +2,7 @@
 import logging
 
 from flask import g
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from .models import Base
@@ -52,6 +52,33 @@ def new_session(app):
     return app.extensions["db_sessionmaker"]()
 
 
+_BACKFILL = """
+UPDATE quiz_games SET
+  answered_count = (SELECT COUNT(*) FROM quiz_game_answers a
+                    WHERE a.game_id = quiz_games.id AND a.selected_option IS NOT NULL),
+  wrong_count = (SELECT COUNT(*) FROM quiz_game_answers a
+                 WHERE a.game_id = quiz_games.id AND a.selected_option IS NOT NULL AND a.is_correct = :no)
+WHERE status = 'completed'
+"""
+
+
+def upgrade_columns(conn):
+    """Additive upgrade for databases created by an earlier version: add the per-game answered/wrong
+    counts and backfill them from the stored answers. Safe to run repeatedly; nothing is dropped."""
+    insp = inspect(conn)
+    if "quiz_games" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("quiz_games")}
+    added = False
+    for name in ("answered_count", "wrong_count"):
+        if name not in cols:
+            conn.execute(text(f"ALTER TABLE quiz_games ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0"))
+            added = True
+    if added:
+        conn.execute(text(_BACKFILL), {"no": False})
+        log.info("Added quiz_games.answered_count / wrong_count and backfilled saved games")
+
+
 def create_schema(app):
     """Idempotent, non-destructive schema creation (never drops tables)."""
     engine = app.extensions["db_engine"]
@@ -59,5 +86,8 @@ def create_schema(app):
         with engine.begin() as conn:
             conn.execute(text("SELECT pg_advisory_xact_lock(727001)"))  # serialize multi-worker startup
             Base.metadata.create_all(conn)
+            upgrade_columns(conn)
     else:
-        Base.metadata.create_all(engine)
+        with engine.begin() as conn:
+            Base.metadata.create_all(conn)
+            upgrade_columns(conn)

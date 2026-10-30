@@ -122,6 +122,8 @@ class QuizGame(Base):
     current_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     resolved_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     correct_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    answered_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    wrong_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     hints_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     hints_max: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     difficulty: Mapped[str] = mapped_column(String(10), nullable=False, default="Mixed")

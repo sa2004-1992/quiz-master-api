@@ -78,6 +78,20 @@ def register_hooks(app):
         dark = bool(user and user.preferences and user.preferences.dark_mode)
         return {"current_user": user, "theme": "dark" if dark else "light"}
 
+    @app.template_filter("cat_emoji")
+    def cat_emoji(name):
+        from .categories import CATEGORY_EMOJI
+        return CATEGORY_EMOJI.get(name, "\u2753")
+
+    @app.template_filter("human_duration")
+    def human_duration(seconds):
+        seconds = int(seconds or 0)
+        h, rem = divmod(seconds, 3600)
+        m, sec = divmod(rem, 60)
+        if h:
+            return f"{h}h {m}m"
+        return f"{m}m {sec}s" if m else f"{sec}s"
+
     @app.template_filter("duration")
     def duration(seconds):
         return clock.format_duration(seconds)
