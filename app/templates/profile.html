@@ -2,29 +2,75 @@
 {% block title %}Profile{% endblock %}
 {% block heading %}Profile{% endblock %}
 {% block content %}
-<div class="page-actions">
-  <button type="button" class="btn btn-danger" data-open-clear>Clear All Data</button>
+{% set gender_icon = {'Male': '&#129489;', 'Female': '&#128105;', 'Other': '&#129489;'}.get(current_user.gender, '&#129489;') %}
+<section class="profile-hero" aria-label="User details">
+  <div class="avatar" aria-hidden="true">{{ current_user.full_name[:1]|upper }}</div>
+  <div class="hero-details">
+    <h2>{{ current_user.full_name }}</h2>
+    <p class="hero-line">@{{ current_user.username }}</p>
+    <p class="hero-line"><span class="hero-icon" aria-hidden="true">&#9993;&#65039;</span>{{ current_user.email }}</p>
+    <p class="hero-line"><span class="hero-icon" aria-hidden="true">&#128197;</span>Joined on {{ joined }}</p>
+    <p class="hero-line"><span class="hero-icon" aria-hidden="true">{{ gender_icon|safe }}</span>{{ current_user.gender }}</p>
+  </div>
+  <button type="button" class="btn-clear" data-open-clear><span aria-hidden="true">&#128465;&#65039;</span> Clear All Data</button>
+</section>
+
+<h3 class="section-title">&#129504; Quiz Statistics</h3>
+<div class="grid grid-3">
+  <div class="stat stat-card"><span class="stat-label">&#127918; Total Games Played</span><strong>{{ "{:,}".format(o.stats.games) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#9989; Total Correct Answers</span><strong>{{ "{:,}".format(o.stats.correct) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#10060; Total Wrong Answers</span><strong>{{ "{:,}".format(o.stats.wrong) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#127942; Total Score</span><strong>{{ "{:,}".format(o.stats.score) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#10067; Total Questions Played</span><strong>{{ "{:,}".format(o.stats.answered) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#9201;&#65039; Total Time Spent</span><strong>{{ o.stats.time|human_duration }}</strong></div>
 </div>
-<article class="card">
-  <h2>Account</h2>
-  <dl class="details">
-    <div><dt>Full Name</dt><dd>{{ current_user.full_name }}</dd></div>
-    <div><dt>Username</dt><dd>{{ current_user.username }}</dd></div>
-    <div><dt>Email Address</dt><dd>{{ current_user.email }}</dd></div>
-    <div><dt>Gender</dt><dd>{{ current_user.gender }}</dd></div>
+
+<h3 class="section-title">&#128200; Overall Performance</h3>
+<div class="grid grid-3">
+  <div class="stat stat-card"><span class="stat-label">&#127919; Overall Accuracy</span><strong>{{ "%.1f"|format(o.performance.accuracy) }}%</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#9201;&#65039; Average Time per Game</span><strong>{{ o.performance.avg_time|human_duration }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#11088; Average Score per Game</span><strong>{{ "%.1f"|format(o.performance.avg_score) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#10067; Average Questions per Game</span><strong>{{ "%.1f"|format(o.performance.avg_questions) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#9989; Correct Answer Rate</span><strong>{{ "%.1f"|format(o.performance.correct_rate) }}%</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#10060; Wrong Answer Rate</span><strong>{{ "%.1f"|format(o.performance.wrong_rate) }}%</strong></div>
+</div>
+<p class="muted small">Overall Accuracy and Correct Answer Rate are the same measure: correct &divide; (correct + wrong). Hints are not counted as correct or wrong.</p>
+
+<h3 class="section-title">&#127942; Personal Records (In One Game)</h3>
+{% if o.records %}
+<div class="table-wrap"><table class="table">
+  <thead><tr><th>Record</th><th>What it means</th><th class="num">Value</th><th>Category</th></tr></thead>
+  <tbody>
+    <tr><td data-label="Record">&#11088; Highest Score</td><td data-label="What it means">Highest score in one saved game</td><td data-label="Value" class="num">{{ o.records.score[0] }}</td><td data-label="Category">{{ o.records.score[1] }}</td></tr>
+    <tr><td data-label="Record">&#10067; Highest Questions Played</td><td data-label="What it means">Most questions answered in one saved game</td><td data-label="Value" class="num">{{ o.records.answered[0] }}</td><td data-label="Category">{{ o.records.answered[1] }}</td></tr>
+    <tr><td data-label="Record">&#9989; Highest Correct Answers</td><td data-label="What it means">Most correct answers in one saved game</td><td data-label="Value" class="num">{{ o.records.correct[0] }}</td><td data-label="Category">{{ o.records.correct[1] }}</td></tr>
+    <tr><td data-label="Record">&#10060; Highest Wrong Answers</td><td data-label="What it means">Most wrong answers in one saved game</td><td data-label="Value" class="num">{{ o.records.wrong[0] }}</td><td data-label="Category">{{ o.records.wrong[1] }}</td></tr>
+    <tr><td data-label="Record">&#9201;&#65039; Highest Time Spent</td><td data-label="What it means">Longest active play time in one saved game</td><td data-label="Value" class="num">{{ o.records.time[0]|human_duration }}</td><td data-label="Category">{{ o.records.time[1] }}</td></tr>
+  </tbody>
+</table></div>
+{% else %}<div class="card empty"><p>No records yet</p></div>{% endif %}
+
+<h3 class="section-title">&#128202; Category Performance</h3>
+<nav class="tabs" aria-label="Sort categories">
+  <span class="muted small sort-label">Sort by:</span>
+  {% for key, label in [('questions','Most questions'),('name','Name'),('accuracy','Accuracy'),('best','Best score')] %}
+  <a class="tab {{ 'active' if o.sort == key }}" href="{{ url_for('pages.profile', sort=key) }}">{{ label }}</a>{% endfor %}
+</nav>
+{% macro cat_card(r) %}
+<article class="card cat-card {{ '' if r.played else 'unplayed' }}">
+  <h4 class="cat-title"><span class="cat-emoji" aria-hidden="true">{{ r.name|cat_emoji }}</span>{{ r.name }}</h4>
+  <dl class="cat-rows">
+    <div><dt>Questions:</dt><dd>{{ r.questions }}</dd></div>
+    <div><dt>Correct:</dt><dd>{{ r.correct }}</dd></div>
+    <div><dt>Wrong:</dt><dd>{{ r.wrong }}</dd></div>
+    <div><dt>Accuracy:</dt><dd>{{ "%.0f"|format(r.accuracy) }}%</dd></div>
   </dl>
+  <progress class="cat-progress" max="100" value="{{ r.accuracy }}" aria-label="Accuracy {{ r.name }}"></progress>
+  <div class="cat-best"><span>Best Score:</span><strong>{{ r.best }}</strong></div>
 </article>
-<h3 class="section-title">Category Quiz Statistics</h3>
-<div class="grid grid-4">
-  <div class="stat"><span class="stat-label">Games played</span><strong>{{ stats.games }}</strong></div>
-  <div class="stat"><span class="stat-label">Questions answered</span><strong>{{ stats.answered }}</strong></div>
-  <div class="stat"><span class="stat-label">Correct answers</span><strong>{{ stats.correct }}</strong></div>
-  <div class="stat"><span class="stat-label">Accuracy</span><strong>{{ stats.accuracy }}%</strong></div>
-  <div class="stat"><span class="stat-label">Total score</span><strong>{{ stats.score }}</strong></div>
-  <div class="stat"><span class="stat-label">Best game score</span><strong>{{ stats.best }}</strong></div>
-  <div class="stat"><span class="stat-label">Hints used</span><strong>{{ stats.hints }}</strong></div>
-  <div class="stat"><span class="stat-label">Total time</span><strong>{{ stats.time|duration }}</strong></div>
-</div>
+{% endmacro %}
+<div class="grid cat-grid">{% for r in o.played %}{{ cat_card(r) }}{% endfor %}{% for r in o.unplayed %}{{ cat_card(r) }}{% endfor %}</div>
+
 <dialog id="clearDialog" class="dialog">
   <form method="post" action="{{ url_for('pages.clear_data') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
