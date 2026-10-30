@@ -100,6 +100,8 @@ CREATE TABLE IF NOT EXISTS quiz_games (
 	current_index INTEGER NOT NULL, 
 	resolved_count INTEGER NOT NULL, 
 	correct_count INTEGER NOT NULL, 
+	answered_count INTEGER DEFAULT '0' NOT NULL, 
+	wrong_count INTEGER DEFAULT '0' NOT NULL, 
 	hints_used INTEGER NOT NULL, 
 	hints_max INTEGER NOT NULL, 
 	difficulty VARCHAR(10) NOT NULL, 
