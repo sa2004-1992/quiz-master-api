@@ -156,14 +156,33 @@ TEST_DATABASE_URL=postgresql+psycopg2://user:pw@localhost/quiztest pytest   # re
   Day boundaries and streaks use `APP_TIMEZONE`.
 * **Streak:** consecutive days +1; a missed day resets to 1 on the next completion; longest is kept
   until Clear All Data. The Home page shows 0 if the streak has already lapsed.
-* **Leaderboard ranking:** per (user, quiz type/category) row over saved games in the range;
-  order by total score desc, total time asc, username asc, quiz label asc; rank = position
-  in that order (no shared ranks). Weeks start Monday; ranges use `APP_TIMEZONE`.
+* **Leaderboard:** ONE combined, user-wise ranking over saved games of all three modes (Category, All Quiz, Daily);
+  each saved game is one row in `quiz_games`, so it is counted once. Columns: total score, total questions played
+  (correct + wrong; hints excluded), total games, total time (pauses excluded). Order: total score desc, total correct
+  answers desc, total questions played desc, total time asc, then username - so ranks are unique. Ranges (All Time /
+  This Month / This Week (Monday start) / Today) use `APP_TIMEZONE`. Only usernames are exposed. 20 players per page.
 * **History columns:** *Game* = Category Quiz / All Quiz / Daily Quiz; *Category Name* = the category
   name, or All Quiz / Daily Quiz.
 * **Clear All Data** (type DELETE to confirm): removes the user's games, answers, pointers, daily
   records, streak and bookmarks; keeps the account, preferences, questions and everyone else's data.
   Because daily records are removed, today's Daily Challenge can be played again afterwards.
+
+## Quiz mode separation (statistics)
+
+* **All Quiz page** = Quiz 2 only: games with `quiz_type = 'all'` (the play-all mode), completed, for the logged-in user.
+  Its Clear All Data deletes only those games, their answers and the Play All progress pointer.
+* **Profile page** = Quiz 1 (Category Quizzes) only. Daily Quiz data is stored and drives the Daily card/streak on Home,
+  but is not mixed into Profile or All Quiz statistics. Home and My Performance still show per-user summaries.
+* Each saved game stores user, mode, answered/correct/wrong counts, score, active playing time (pauses excluded)
+  and completion time in `quiz_games` (no duplicate tables). Older databases are upgraded automatically at
+  startup (`answered_count`, `wrong_count` added and backfilled; see `migrations/002_add_game_answer_counts.sql`).
+
+## My Performance
+
+Combined stats (games, score, best game, fastest game time, accuracy = correct / answered) come from the user's
+saved games of all three modes; the *By Quiz Type* table keeps Category Quizzes, All Quiz and Daily Quiz separate.
+The *Last 10 Game Scores* charts are drawn client-side as plain SVG (`app/static/js/performance.js`, no library) and
+nothing is rendered until Bar or Pie is chosen. The chart data is the user's latest 10 saved games, oldest first.
 
 ## Security
 
