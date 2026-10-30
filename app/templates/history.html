@@ -3,6 +3,26 @@
 {% block title %}History{% endblock %}
 {% block heading %}History{% endblock %}
 {% block content %}
+<div class="history-head">
+  <h2>&#128344; History</h2>
+  <p class="muted">View all your previously played quiz games.</p>
+</div>
+{% for e in errors %}<div class="alert alert-error" role="alert">{{ e }}</div>{% endfor %}
+<form class="filter-bar" method="get" action="{{ url_for('pages.history') }}" role="search" aria-label="Filter history">
+  <label class="sr-only" for="hq">Search by game or category</label>
+  <input id="hq" class="fb-search" name="q" type="search" value="{{ form.get('q', '') }}" maxlength="60" placeholder="Search by game or category..." autocomplete="off">
+  <label class="sr-only" for="hcat">Category</label>
+  <select id="hcat" class="fb-category" name="category">
+    <option value="">All Categories</option>
+    {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if form.get('category') == c.id|string }}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <label class="sr-only" for="hstart">Start date</label>
+  <input id="hstart" class="fb-date" name="start" type="date" value="{{ form.get('start', '') }}" title="Start date">
+  <label class="sr-only" for="hend">End date</label>
+  <input id="hend" class="fb-date" name="end" type="date" value="{{ form.get('end', '') }}" title="End date">
+  <button class="btn btn-primary fb-submit" type="submit">Filter</button>
+</form>
+{% if filters %}<p class="filter-clear"><a href="{{ url_for('pages.history') }}">Clear filters</a></p>{% endif %}
 {% if data["items"] %}
 <div class="table-wrap"><table class="table">
   <thead><tr><th>Date</th><th>Game</th><th>Category Name</th><th>Difficulty</th><th>Time</th><th class="num">Score</th></tr></thead>
@@ -11,6 +31,7 @@
         <td data-label="Difficulty">{{ r.difficulty }}</td><td data-label="Time">{{ r.time }}</td><td data-label="Score" class="num">{{ r.score }}</td></tr>
   {% endfor %}</tbody>
 </table></div>
-{{ pager('pages.history', data) }}
+{{ pager('pages.history', data, **filters) }}
+{% elif filters %}<div class="card empty"><p>No quiz history found.</p></div>
 {% else %}<div class="card empty"><p>No saved games yet. Finish &amp; save a quiz to see it here.</p></div>{% endif %}
 {% endblock %}

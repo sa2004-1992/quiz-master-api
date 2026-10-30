@@ -3,8 +3,14 @@
 {% block title %}All Quiz{% endblock %}
 {% block heading %}All Quiz{% endblock %}
 {% block content %}
+<div class="page-head">
+  <div>
+    <h2>&#128202; All Quiz</h2>
+    <p class="muted">Complete quiz statistics and performance overview (Play All Quiz).</p>
+  </div>
+  <button type="button" class="btn-clear" data-open-clear><span aria-hidden="true">&#128465;&#65039;</span> Clear All Data</button>
+</div>
 <article class="card">
-  <h2>All Quiz</h2>
   <p>Questions cycle through all {{ total_categories }} categories in a fixed order, one category after another, then start over with fresh questions. Each game covers up to {{ per_game }} questions and your place is saved when you finish &amp; save.</p>
   {% if saved %}
   <dl class="meta">
@@ -17,4 +23,53 @@
     <button class="btn btn-primary" type="submit">{{ icon('play') }} {{ 'Continue Quiz' if (active or saved) else 'Start Quiz' }}</button>
   </form>
 </article>
+
+<h3 class="section-title">&#129504; Quiz Statistics</h3>
+<div class="grid grid-3">
+  <div class="stat stat-card"><span class="stat-label">&#127918; Total Games Played</span><strong>{{ "{:,}".format(o.stats.games) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#9989; Total Correct Answers</span><strong>{{ "{:,}".format(o.stats.correct) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#10060; Total Wrong Answers</span><strong>{{ "{:,}".format(o.stats.wrong) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#127942; Total Score</span><strong>{{ "{:,}".format(o.stats.score) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#10067; Total Questions Played</span><strong>{{ "{:,}".format(o.stats.answered) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#9201;&#65039; Total Time Spent</span><strong>{{ o.stats.time|human_duration }}</strong></div>
+</div>
+
+<h3 class="section-title">&#127942; Personal Records (In One Game)</h3>
+{% if o.records %}
+<div class="table-wrap"><table class="table">
+  <thead><tr><th>Record</th><th class="num">Value</th></tr></thead>
+  <tbody>
+    <tr><td data-label="Record">&#11088; Highest Score in One Game</td><td data-label="Value" class="num">{{ o.records.score }}</td></tr>
+    <tr><td data-label="Record">&#128203; Highest Questions Played in One Game</td><td data-label="Value" class="num">{{ o.records.answered }}</td></tr>
+    <tr><td data-label="Record">&#9989; Highest Correct Answers in One Game</td><td data-label="Value" class="num">{{ o.records.correct }}</td></tr>
+    <tr><td data-label="Record">&#10060; Highest Wrong Answers in One Game</td><td data-label="Value" class="num">{{ o.records.wrong }}</td></tr>
+    <tr><td data-label="Record">&#9201;&#65039; Highest Time Spent in One Game</td><td data-label="Value" class="num">{{ o.records.time|human_duration }}</td></tr>
+  </tbody>
+</table></div>
+{% else %}<div class="card empty"><p>No records yet</p></div>{% endif %}
+
+<h3 class="section-title">&#128200; Overall Performance</h3>
+<div class="grid grid-3">
+  <div class="stat stat-card"><span class="stat-label">&#127919; Overall Accuracy</span><strong>{{ "%.1f"|format(o.performance.accuracy) }}%</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#9201;&#65039; Average Time per Game</span><strong>{{ o.performance.avg_time|human_duration }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#11088; Average Score per Game</span><strong>{{ "%.1f"|format(o.performance.avg_score) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#10067; Average Questions per Game</span><strong>{{ "%.1f"|format(o.performance.avg_questions) }}</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#9989; Correct Answer Rate</span><strong>{{ "%.1f"|format(o.performance.correct_rate) }}%</strong></div>
+  <div class="stat stat-card"><span class="stat-label">&#10060; Wrong Answer Rate</span><strong>{{ "%.1f"|format(o.performance.wrong_rate) }}%</strong></div>
+</div>
+<p class="muted small">Based only on your completed All Quiz games. Overall Accuracy and Correct Answer Rate are the same measure: correct &divide; (correct + wrong). Hints are not counted as correct or wrong.</p>
+
+<dialog id="clearDialog" class="dialog">
+  <form method="post" action="{{ url_for('pages.clear_all_quiz') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Clear All Quiz data?</h2>
+    <p>This permanently deletes <strong>your All Quiz</strong> history, scores, answers, statistics, records and progress (the sequence starts again from the first category), including any All Quiz in progress. Your Category Quizzes, Daily Challenge data and account are not affected. This cannot be undone.</p>
+    <label for="confirmText">Type <strong>DELETE</strong> to confirm</label>
+    <input id="confirmText" name="confirm" type="text" autocomplete="off" required pattern="DELETE">
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" data-close-clear>Cancel</button>
+      <button type="submit" class="btn btn-danger">Clear All Quiz data</button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}

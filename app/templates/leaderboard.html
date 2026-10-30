@@ -1,20 +1,42 @@
 {% extends "base.html" %}
-{% from "partials/pagination.html" import pager %}
 {% block title %}Leaderboard{% endblock %}
 {% block heading %}Leaderboard{% endblock %}
 {% block content %}
-<nav class="tabs" aria-label="Date range">
+{% macro pages_nav(data, range_name) %}
+  {% set lo = [data.page - 2, 1]|max %}{% set hi = [lo + 4, data.pages]|min %}
+  <nav class="lb-pages" aria-label="Pagination">
+    {% if data.page > 1 %}<a class="lb-page" href="{{ url_for('pages.leaderboard', range=range_name, page=data.page-1) }}" aria-label="Previous page">&laquo;</a>{% endif %}
+    {% for n in range([hi - 4, 1]|max, hi + 1) %}<a class="lb-page {{ 'active' if n == data.page }}" href="{{ url_for('pages.leaderboard', range=range_name, page=n) }}" {{ 'aria-current=page' if n == data.page }}>{{ n }}</a>{% endfor %}
+    {% if data.page < data.pages %}<a class="lb-page" href="{{ url_for('pages.leaderboard', range=range_name, page=data.page+1) }}" aria-label="Next page">&raquo;</a>{% endif %}
+  </nav>
+{% endmacro %}
+<div class="lb-head">
+  <div>
+    <h2>&#127942; Leaderboard</h2>
+    <p class="muted">See how you rank against other players.</p>
+  </div>
+  <div class="lb-total card" aria-label="Total players"><span>&#128101; Total Players</span><strong>{{ data.total_players }}</strong></div>
+</div>
+<nav class="tabs lb-filters" aria-label="Date range">
   {% for key, label in ranges.items() %}<a class="tab {{ 'active' if key == range_name }}" href="{{ url_for('pages.leaderboard', range=key) }}">{{ label }}</a>{% endfor %}
 </nav>
+{% if data.me_rank %}<p class="muted small lb-me">Your rank: <strong>#{{ data.me_rank }}</strong> of {{ data.total }} player{{ '' if data.total == 1 else 's' }}</p>{% endif %}
 {% if data["items"] %}
-<div class="table-wrap"><table class="table">
-  <thead><tr><th>Rank</th><th>Username</th><th>Quiz Type</th><th class="num">Games Played</th><th class="num">Total Score</th><th>Total Time</th></tr></thead>
+<div class="table-wrap lb-card"><table class="table lb-table">
+  <thead><tr><th>Rank</th><th>Player User Name</th><th>Total Score</th><th>Total Questions Played</th><th>Total Games Played</th><th>Total Time Spent</th></tr></thead>
   <tbody>{% for r in data["items"] %}
-    <tr class="{{ 'me' if r.uid == current_user.id }}"><td data-label="Rank">{{ r.rank }}</td><td data-label="Username">{{ r.username }}</td><td data-label="Quiz Type">{{ r.quiz }}</td>
-        <td data-label="Games Played" class="num">{{ r.games }}</td><td data-label="Total Score" class="num">{{ r.score }}</td><td data-label="Total Time">{{ r.time }}</td></tr>
+    <tr class="{{ {1: 'gold', 2: 'silver', 3: 'bronze'}.get(r.rank, '') }} {{ 'me' if r.uid == current_user.id }}">
+      <td data-label="Rank">{% if r.rank == 1 %}&#129351;{% elif r.rank == 2 %}&#129352;{% elif r.rank == 3 %}&#129353;{% else %}{{ r.rank }}{% endif %}</td>
+      <td data-label="Player User Name"><span class="lb-player"><span class="lb-avatar" aria-hidden="true">{{ r.username[:1]|upper }}</span><span class="lb-name">{{ r.username }}</span>{% if r.rank == 1 %} <span aria-label="Top player">&#128081;</span>{% endif %}</span></td>
+      <td data-label="Total Score" class="lb-score">{{ "{:,}".format(r.score) }}</td>
+      <td data-label="Total Questions Played">{{ "{:,}".format(r.answered) }}</td>
+      <td data-label="Total Games Played">{{ "{:,}".format(r.games) }}</td>
+      <td data-label="Total Time Spent">{{ r.time|human_duration }}</td>
+    </tr>
   {% endfor %}</tbody>
-</table></div>
-{{ pager('pages.leaderboard', data, range=range_name) }}
-<p class="muted small">Ranking: total score (high to low), then total time (low to high), then username. Only saved games count.</p>
+</table>
+<div class="lb-foot"><span class="muted">Showing {{ data.first }} to {{ data.last }} of {{ data.total }} player{{ '' if data.total == 1 else 's' }}</span>{{ pages_nav(data, range_name) }}</div>
+</div>
+<p class="muted small">One combined ranking across Category Quizzes, All Quiz and Daily Quiz, using saved games only. Ranked by total score; ties are broken by more correct answers, then more questions played, then less total time, then username.</p>
 {% else %}<div class="card empty"><p>No results for this period yet.</p></div>{% endif %}
 {% endblock %}
