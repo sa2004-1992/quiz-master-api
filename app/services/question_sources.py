@@ -5,7 +5,7 @@ in one PostgreSQL table. Neither provider supplies explanations, so a short fact
 ("The correct answer is ...") is stored; Gemini questions carry real explanations.
 
 Licensing (check the providers' current terms before launch):
-* Open Trivia DB: CC BY-SA 4.0 - attribution required (see the page footer).
+* Open Trivia DB: CC BY-SA 4.0 - attribution required if you use these questions publicly (the site footer no longer carries it).
 * The Trivia API: free for non-commercial use only; commercial use needs a paid plan.
 """
 import logging

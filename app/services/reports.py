@@ -114,33 +114,6 @@ def performance(session, user_id):
     return {"overall": overall, "by_type": by_type, "chart": chart}
 
 
-def achievements(session, user_id):
-    t = _game_totals(session, user_id)
-    answered, correct, _ = _answer_totals(session, user_id)
-    streak = session.get(UserDailyStreak, user_id)
-    longest = streak.longest_streak if streak else 0
-    cats = session.scalar(select(func.count(func.distinct(QuizGame.category_id))).where(
-        *_done(user_id, QuizGame.quiz_type == "category"))) or 0
-    daily = session.scalar(select(func.count(QuizGame.id)).where(*_done(user_id, QuizGame.quiz_type == "daily"))) or 0
-    all_q = session.scalar(select(func.count(QuizGame.id)).where(*_done(user_id, QuizGame.quiz_type == "all"))) or 0
-    perfect = session.scalar(select(func.count(QuizGame.id)).where(
-        *_done(user_id, QuizGame.resolved_count >= 5, QuizGame.correct_count == QuizGame.resolved_count))) or 0
-    defs = [
-        ("First Steps", "Save your first quiz.", t["games"] >= 1),
-        ("Quiz Enthusiast", "Save 10 quizzes.", t["games"] >= 10),
-        ("Sharp Mind", "Answer 50 questions correctly.", correct >= 50),
-        ("Century Club", "Answer 100 questions correctly.", correct >= 100),
-        ("Perfect Round", "Answer every question correctly in a quiz of 5+ questions.", perfect >= 1),
-        ("Explorer", "Play 10 different categories.", cats >= 10),
-        ("All-Rounder", "Complete an All Quiz.", all_q >= 1),
-        ("Daily Dedication", "Complete a Daily Challenge.", daily >= 1),
-        ("On a Roll", "Reach a 3-day daily streak.", longest >= 3),
-        ("Week Warrior", "Reach a 7-day daily streak.", longest >= 7),
-        ("Monthly Master", "Reach a 30-day daily streak.", longest >= 30),
-    ]
-    return [{"name": n, "description": d, "earned": e} for n, d, e in defs]
-
-
 GAME_LABELS = {"category": "Category Quiz", "all": "All Quiz", "daily": "Daily Quiz"}
 
 

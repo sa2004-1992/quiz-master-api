@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from ..models import (Bookmark, Category, DailyGameRecord, DailyQuestionSet, PlayAllProgress,
                       Question, QuizGame, QuizGameAnswer, UserCategoryProgress)
 from ..utils import clock
-from . import daily_streak, progress, scoring
+from . import achievements, daily_streak, progress, scoring
 from .ai_question_generator import generate_and_store
 
 log = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ def _load_questions(session, ids):
 
 
 # --------------------------------------------------------------------------- start / resume
-def start_category_game(session, user_id, category_id):
+def start_category_game(session, user_id, category_id, restart=False):
     """Quiz Type 1."""
     category = session.get(Category, category_id)
     if category is None:
@@ -119,8 +119,11 @@ def start_category_game(session, user_id, category_id):
     if not ids:
         raise QuizError("No questions are available for this category yet. Please try again later.",
                         503, "no_questions")
-    if pointer >= len(ids):
-        pointer %= len(ids)
+    if pointer >= len(ids):  # every stored question has been completed and saved
+        if not restart:
+            raise QuizError("You have completed all available questions in this category. Choose Play Again to "
+                            "start over; new questions appear here as they are added.", 409, "category_completed")
+        pointer = 0  # explicit Play Again; saved history and scores are untouched
     qids, positions = progress.category_slice(ids, pointer, needed)
     questions = _load_questions(session, qids)
     game = _new_game(session, user_id, "category", key, category.id, qids, positions, pointer,
@@ -389,10 +392,9 @@ def _extend_game(session, game):
         ids = _ordered_ids(session, "category", game.category_id)
         n = len(ids)
         qids, positions = [], []
-        for p in range(last + 1, last + 1 + n):
-            qid = ids[p % n]
-            if qid not in existing:
-                qids.append(qid)
+        for p in range(last + 1, n):  # only questions after the last one: completed ones are never reused
+            if ids[p] not in existing:
+                qids.append(ids[p])
                 positions.append(p)
             if len(qids) >= count:
                 break
@@ -532,6 +534,7 @@ def finish_game(session, user_id, game_id):
             return summarize(session, game, already_saved=True)
         raise QuizError("Could not save the game. Please try again.", 500, "save_failed")
     session.expire_all()
+    achievements.evaluate_safely(session, user_id, game_id)  # after the save is committed; never blocks it
     return summarize(session, get_game(session, user_id, game_id), already_saved=False)
 
 

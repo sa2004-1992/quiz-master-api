@@ -1,30 +1,24 @@
 """Deterministic question sequencing and progress pointers.
 
 Pointers are indexes into an ordered, stable question list (ORDER BY id).
-* Quiz Type 1: pointer into the category's own list; wraps modulo the list size.
+* Quiz Type 1: pointer into the category's own list (ordered by id); it only moves forward and never wraps by itself.
 * Quiz Type 2: one global counter ``g``; position g -> category ``g % C`` (C=56, in the required
   order), round ``g // C``, question ``round % len(category_questions)``.
 """
 
 
 def category_slice(ids, pointer, count):
-    """Return (question_ids, raw_positions) for a category game."""
+    """Return (question_ids, raw_positions) for a category game: the next ``count`` questions at or after
+    ``pointer``. It never wraps: once every stored question is completed the slice is empty (see
+    start_category_game for the 'completed' handling), so finished questions are never repeated."""
     n = len(ids)
-    if n == 0:
-        return [], []
-    if pointer >= n:
-        pointer %= n
-    count = min(count, n)  # never repeat a question inside one game
-    positions = [pointer + i for i in range(count)]
-    return [ids[p % n] for p in positions], positions
+    positions = list(range(pointer, min(pointer + count, n)))
+    return [ids[p] for p in positions], positions
 
 
 def next_category_pointer(last_position, n):
-    """Pointer after consuming up to raw position ``last_position`` (inclusive)."""
-    nxt = last_position + 1
-    if n and nxt > n:
-        nxt %= n
-    return nxt
+    """Pointer after consuming up to position ``last_position`` (inclusive); it never exceeds ``n``."""
+    return min(last_position + 1, n) if n else last_position + 1
 
 
 def all_quiz_slice(ordered_category_ids, ids_by_category, pointer, count):
