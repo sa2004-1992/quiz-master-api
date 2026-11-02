@@ -122,6 +122,28 @@ CREATE TABLE IF NOT EXISTS quiz_games (
 CREATE INDEX IF NOT EXISTS ix_games_status_finished ON quiz_games (status, finished_at);
 CREATE INDEX IF NOT EXISTS ix_games_user_status_finished ON quiz_games (user_id, status, finished_at);
 
+CREATE TABLE IF NOT EXISTS user_achievement_state (
+	user_id INTEGER NOT NULL, 
+	current_correct_streak INTEGER NOT NULL, 
+	best_correct_streak INTEGER NOT NULL, 
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
+	PRIMARY KEY (user_id), 
+	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE IF NOT EXISTS user_achievements (
+	id SERIAL NOT NULL, 
+	user_id INTEGER NOT NULL, 
+	achievement_id VARCHAR(40) NOT NULL, 
+	earned_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
+	game_id INTEGER, 
+	PRIMARY KEY (id), 
+	CONSTRAINT uq_user_achievement UNIQUE (user_id, achievement_id), 
+	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+
 CREATE TABLE IF NOT EXISTS user_category_progress (
 	user_id INTEGER NOT NULL, 
 	category_id INTEGER NOT NULL, 
