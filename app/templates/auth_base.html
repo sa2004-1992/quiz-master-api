@@ -10,10 +10,13 @@
 </head>
 <body class="auth-body">
   <main class="auth-wrap">
-    <div class="auth-card card">
-      <div class="auth-brand">{% include "partials/logo.html" %}<span>Quiz Master</span></div>
-      {% include "partials/flash.html" %}
-      {% block content %}{% endblock %}
+    <div class="auth-col">
+      <div class="auth-card card">
+        <div class="auth-brand">{% include "partials/logo.html" %}<span>Quiz Master</span></div>
+        {% include "partials/flash.html" %}
+        {% block content %}{% endblock %}
+      </div>
+      {% include "partials/footer.html" %}
     </div>
   </main>
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
