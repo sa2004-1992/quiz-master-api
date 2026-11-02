@@ -96,5 +96,12 @@
     var max = parseFloat(b.getAttribute('data-max')) || 1; b.style.height = Math.max(2, (parseFloat(b.getAttribute('data-value')) / max) * 100) + '%';
   });
 
+  /* ---------- history filter: end date cannot precede start date ---------- */
+  var hs = document.getElementById('hstart'), he = document.getElementById('hend');
+  if (hs && he) {
+    var sync = function () { he.min = hs.value || ''; hs.max = he.value || ''; };
+    hs.addEventListener('change', sync); he.addEventListener('change', sync); sync();
+  }
+
   window.QM = { csrf: csrf };
 })();
