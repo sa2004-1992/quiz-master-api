@@ -3,13 +3,15 @@ from datetime import date
 
 from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template,
                    request, url_for)
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from .. import limiter
 from ..auth.security import login_required
 from ..database import get_session
-from ..models import (Bookmark, Category, DailyQuestionSet, Feedback, PlayAllProgress, QuizGame,
-                      UserDailyStreak, UserPreference)
+from ..models import (Bookmark, Category, DailyQuestionSet, Feedback, PlayAllProgress, Question, QuizGame,
+                      UserCategoryProgress, UserDailyStreak, UserPreference)
+from ..services import achievements as achievement_service
+from ..services import feedback as feedback_service
 from ..services import daily_streak, quiz_engine, reports
 from ..services.user_data import clear_all_quiz_data, clear_user_quiz_data
 from ..utils import clock
@@ -63,7 +65,12 @@ def quizzes():
         stmt = stmt.where(Category.name.ilike(f"%{q.replace('%', '').replace('_', '')}%"))
     active = set(db.scalars(select(QuizGame.category_id).where(
         QuizGame.user_id == g.user.id, QuizGame.active_key.like("cat:%"))))
-    return render_template("quizzes.html", categories=list(db.scalars(stmt)), q=q, active=active)
+    counts = dict(db.execute(select(Question.category_id, func.count(Question.id))
+                             .where(Question.pool == "category").group_by(Question.category_id)).all())
+    pointers = dict(db.execute(select(UserCategoryProgress.category_id, UserCategoryProgress.pointer)
+                               .where(UserCategoryProgress.user_id == g.user.id)).all())
+    completed = {cid for cid, n in counts.items() if n > 0 and pointers.get(cid, 0) >= n}  # every question done
+    return render_template("quizzes.html", categories=list(db.scalars(stmt)), q=q, active=active, completed=completed)
 
 
 @bp.route("/all-quiz")
@@ -169,7 +176,16 @@ def performance():
 @bp.route("/achievements")
 @login_required
 def achievements():
-    return render_template("achievements.html", badges=reports.achievements(get_session(), g.user.id))
+    db = get_session()
+    achievement_service.evaluate_safely(db, g.user.id)  # catch-up for games saved before this feature existed
+    return render_template("achievements.html", badges=achievement_service.statuses(db, g.user.id))
+
+
+@bp.route("/api/achievements")
+@login_required
+def achievements_api():
+    """Read-only. Status is computed on the server; there is no endpoint that accepts a status."""
+    return jsonify({"ok": True, "achievements": achievement_service.statuses(get_session(), g.user.id)})
 
 
 @bp.route("/bookmarks")
@@ -194,21 +210,38 @@ def remove_bookmark(question_id):
 @login_required
 @limiter.limit(lambda: current_app.config["FEEDBACK_RATE_LIMIT"], methods=["POST"])
 def feedback():
+    db, tz = get_session(), current_app.config["APP_TIMEZONE"]
     errors, form = {}, request.form if request.method == "POST" else {}
-    if request.method == "POST":
-        message = (form.get("message") or "").strip()
-        rating = form.get("rating") or ""
-        if len(message) < 5 or len(message) > 2000:
-            errors["message"] = "Please write between 5 and 2000 characters."
-        if rating and rating not in {"1", "2", "3", "4", "5"}:
-            errors["rating"] = "Choose a rating from 1 to 5."
+    if request.method == "POST":  # no-JavaScript fallback; the page normally submits through /api/feedback
+        rating, message, errors = feedback_service.validate(form.get("rating"), form.get("message"))
         if not errors:
-            db = get_session()
-            db.add(Feedback(user_id=g.user.id, message=message, rating=int(rating) if rating else None))
-            db.commit()
+            feedback_service.create(db, g.user.id, rating, message)
             flash("Thank you for your feedback!", "success")
             return redirect(url_for("pages.feedback"))
-    return render_template("feedback.html", errors=errors, form=form), (400 if errors else 200)
+    return render_template("feedback.html", errors=errors, form=form,
+                           items=feedback_service.list_for_user(db, g.user.id, tz)), (400 if errors else 200)
+
+
+@bp.route("/api/feedback", methods=["GET", "POST"])
+@login_required
+@limiter.limit(lambda: current_app.config["FEEDBACK_RATE_LIMIT"], methods=["POST"])
+def feedback_api():
+    """GET: this user's feedback (newest first). POST: validate, save for the logged-in user, return the list."""
+    db, tz = get_session(), current_app.config["APP_TIMEZONE"]
+    if request.method == "POST":
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "Invalid request."}), 400
+        rating, message, errors = feedback_service.validate(body.get("rating"), body.get("message"))
+        if errors:
+            return jsonify({"ok": False, "error": " ".join(errors.values()), "errors": errors}), 400
+        try:
+            feedback_service.create(db, g.user.id, rating, message)
+        except Exception:  # noqa: BLE001 - never leak internals
+            db.rollback()
+            current_app.logger.exception("Saving feedback failed")
+            return jsonify({"ok": False, "error": "Could not send your feedback. Please try again."}), 500
+    return jsonify({"ok": True, "items": feedback_service.list_for_user(db, g.user.id, tz)})
 
 
 @bp.route("/api/preferences/theme", methods=["POST"])

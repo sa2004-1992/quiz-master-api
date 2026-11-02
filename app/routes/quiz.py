@@ -30,7 +30,7 @@ def _start(fn, *args):
 @bp.route("/quiz/start/category/<int:category_id>", methods=["POST"])
 @login_required
 def start_category(category_id):
-    return _start(quiz_engine.start_category_game, category_id)
+    return _start(quiz_engine.start_category_game, category_id, request.form.get("restart") == "1")
 
 
 @bp.route("/quiz/start/all", methods=["POST"])
