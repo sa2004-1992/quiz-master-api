@@ -768,3 +768,422 @@ def test_chart_javascript_renders_bar_and_pie_correctly():
     """)
     r = subprocess.run(["node", "-e", script], capture_output=True, text=True, cwd=".")
     assert r.returncode == 0 and "chart js ok" in r.stdout, r.stderr
+
+
+# ---------------------------------------------------------------- Achievements & Badges
+SPEC = [  # (name, description) in the exact order required
+    ("First Steps", "Complete your first quiz game."),
+    ("Quiz Enthusiast", "Play 10 quiz games (overall across all quiz modes)."),
+    ("Dedicated Player", "Play 20 quiz games (overall across all quiz modes)."),
+    ("Quiz Regular", "Play 50 quiz games (overall across all quiz modes)."),
+    ("Quiz Veteran", "Play 100 quiz games (overall across all quiz modes)."),
+    ("Quiz Champion", "Play 200 quiz games (overall across all quiz modes)."),
+    ("Quiz Master", "Play 300 quiz games (overall across all quiz modes)."),
+    ("Quiz Legend", "Play 500 quiz games (overall across all quiz modes)."),
+    ("Sharp Mind", "Answer 10 questions correctly."), ("Quick Thinker", "Answer 20 questions correctly."),
+    ("Bright Mind", "Answer 50 questions correctly."), ("Century Club", "Answer 100 questions correctly."),
+    ("Knowledge Champion", "Answer 500 questions correctly."),
+    ("Winning Streak", "Answer 10 questions correctly in a row."), ("Unstoppable Mind", "Answer 20 questions correctly in a row."),
+    ("Brain Power", "Answer 30 questions correctly in a row."), ("Master Thinker", "Answer 40 questions correctly in a row."),
+    ("Perfect Streak", "Answer 50 questions correctly in a row."), ("Perfect Streak", "Answer 100 questions correctly in a row."),
+    ("Perfect Round", "Answer every question correctly in a completed quiz containing at least 5 questions."),
+    ("Curious Explorer", "Play 10 different categories."), ("Knowledge Explorer", "Play 20 different categories."),
+    ("Adventure Seeker", "Play 30 different categories."), ("Master Explorer", "Play 40 different categories."),
+    ("Ultimate Explorer", "Play 50 different categories."),
+    ("All-Rounder", "Complete one All Quiz (Quiz 2 / Play All Quiz)."),
+    ("Daily Dedication", "Complete your first Daily Challenge."), ("On a Roll", "Reach a 3-day daily streak."),
+    ("Week Warrior", "Reach a 7-day daily streak."), ("Fortnight Champion", "Reach a 15-day daily streak."),
+    ("Monthly Master", "Reach a 30-day daily streak."),
+    ("Hint-Free Hero", "Complete 5 quiz games without using any hints."),
+    ("Speed Solver", "Complete a quiz game in under 2 minutes."),
+    ("Accuracy Expert", "Achieve at least 90% accuracy in one completed quiz containing at least 20 questions."),
+    ("No Mistakes", "Complete a quiz game with zero wrong answers and at least 20 questions."),
+    ("Marathon Player", "Answer 100 questions in a single completed quiz game."),
+    ("Knowledge Collector", "Answer 1,000 questions across all quiz modes."),
+    ("Perfect Ten", "Answer 10 consecutive questions correctly within a single quiz game."),
+    ("Hint Saver", "Complete 10 quiz games using no more than one hint per game."),
+    ("Category Expert", "Answer 100 questions correctly in the same category."),
+    ("Daily Perfectionist", "Complete a Daily Challenge with all answers correct."),
+    ("Comeback Champion", "Complete a quiz game with at least 5 correct answers after answering a question incorrectly."),
+    ("Quiz Marathon", "Complete 10 quiz games in a single day."),
+]
+
+
+def _ach_status(client):
+    import re
+    from html import unescape
+    html = client.get("/achievements").get_data(as_text=True)
+    cards = re.findall(r'<article class="card badge[^"]*">\s*<h3>(.*?)</h3>\s*<p>(.*?)</p>\s*<p class="ach-status"><strong>(.*?)</strong></p>\s*</article>', html, re.S)
+    return [(unescape(n), unescape(d), st) for n, d, st in cards], html
+
+
+def _earned(client):
+    r = client.get("/api/achievements").get_json()["achievements"]
+    return {a["id"] for a in r if a["status"] == "Earned"}
+
+
+def make_game(app, user_id, quiz_type="category", answers=(), finished=datetime(2026, 3, 1, 3, 0), category="Math", qids=None,
+              elapsed=10, hints=None):
+    """Insert a completed game with answers. answers: 'T' correct, 'F' wrong, 'H' hint. qids: question ids to use."""
+    s = app.extensions["db_sessionmaker"]()
+    try:
+        ids = qids or list(range(1, len(answers) + 1))
+        g = QuizGame(user_id=user_id, quiz_type=quiz_type, category_id=cat_id(app, category) if quiz_type == "category" else None,
+                     status="completed", active_key=None, question_ids=list(ids), seq_positions=list(range(len(ids))),
+                     resolved_count=len(answers), started_at=finished, finished_at=finished, elapsed_seconds=elapsed,
+                     hints_used=answers.count("H") if hints is None else hints,
+                     answered_count=sum(a != "H" for a in answers), correct_count=answers.count("T"),
+                     wrong_count=answers.count("F"), score=0)
+        s.add(g)
+        s.flush()
+        for i, a in enumerate(answers):
+            s.add(QuizGameAnswer(game_id=g.id, question_id=ids[i], position=i, selected_option=None if a == "H" else "A",
+                                 is_correct=a == "T", hint_used=a == "H", points=0))
+        s.commit()
+        return g.id
+    finally:
+        s.close()
+
+
+def run_evaluate(app, user_id=1):
+    from app.services import achievements
+    s = app.extensions["db_sessionmaker"]()
+    try:
+        return achievements.evaluate(s, user_id)
+    finally:
+        s.close()
+
+
+def test_achievement_list_matches_spec_exactly_and_all_locked_for_new_user(app, client, user):
+    cards, html = _ach_status(client)
+    assert [(n, d) for n, d, _ in cards] == SPEC and len(cards) == 43
+    assert all(st == "Locked" for _, _, st in cards)
+    assert html.count("Locked") == 43 and "Earned" not in html.replace("Earned" if False else "zzz", "")  # one status each
+    lowered = html.lower()
+    assert "<progress" not in lowered and "progress" not in lowered and html.split('class="grid badge-grid"')[1].count("%") == 1  # only "90%" in a requirement
+    import re
+    assert not re.search(r"\d+\s*/\s*\d+", html.split('class="grid badge-grid"')[1])  # no 8/10 style counters
+
+
+def test_game_count_achievements_use_all_modes_and_thresholds(app, client, user):
+    for i in range(9):
+        make_game(app, 1, ["category", "all", "daily"][i % 3], "T", finished=datetime(2026, 3, 1, 3, i))
+    run_evaluate(app)
+    assert "first_steps" in _earned(client) and "games_10" not in _earned(client)  # 9 games across the three modes
+    make_game(app, 1, "daily", "T", finished=datetime(2026, 3, 2, 3, 0))
+    run_evaluate(app)
+    assert _earned(client) >= {"first_steps", "games_10"} and "games_20" not in _earned(client)
+
+
+def test_correct_answer_totals(app, client, user):
+    make_game(app, 1, answers="T" * 9)
+    run_evaluate(app)
+    assert "correct_10" not in _earned(client)
+    make_game(app, 1, "daily", answers="TF", finished=datetime(2026, 3, 2))
+    run_evaluate(app)
+    assert "correct_10" in _earned(client) and "correct_20" not in _earned(client)
+
+
+def test_streak_is_continuous_across_modes_and_resets_on_wrong(app, client, user):
+    make_game(app, 1, "category", "TTTTTTFTTT", finished=datetime(2026, 3, 1, 3, 0))   # best run 6, ends on 3
+    run_evaluate(app)
+    assert "streak_10" not in _earned(client)
+    make_game(app, 1, "daily", "TTTTTTT", finished=datetime(2026, 3, 2, 3, 0))        # 3 + 7 = 10 across modes
+    run_evaluate(app)
+    assert "streak_10" in _earned(client) and "streak_20" not in _earned(client)
+
+
+def test_hint_does_not_reset_or_extend_streak_and_wrong_resets(app, client, user):
+    make_game(app, 1, "all", "TTTTTHTTTTT", qids=list(range(1, 12)))  # 5 + hint + 5 = 10 correct in a row
+    run_evaluate(app)
+    assert "streak_10" in _earned(client)
+    make_game(app, 1, "all", "TTTTTFTTTTT", qids=list(range(1, 12)), finished=datetime(2026, 3, 2))
+    from app.services.achievements import correct_streaks
+    assert correct_streaks([(True, "A")] * 4 + [(False, "A")] + [(True, "A")] * 2) == (2, 4)
+    assert correct_streaks([(True, "A"), (False, None), (True, "A")]) == (2, 2)
+
+
+def test_long_streaks_and_permanence_of_best(app, client, user):
+    make_game(app, 1, "category", "T" * 50, qids=list(range(1, 51)))
+    run_evaluate(app)
+    assert {"streak_10", "streak_20", "streak_30", "streak_40", "streak_50"} <= _earned(client) and "streak_100" not in _earned(client)
+    make_game(app, 1, "category", "FFFF", finished=datetime(2026, 3, 2))
+    run_evaluate(app)
+    assert "streak_50" in _earned(client)  # a later mistake never un-earns anything
+
+
+def test_perfect_round_rules(app, client, user):
+    make_game(app, 1, "category", "TTTT", finished=datetime(2026, 3, 1, 3, 0))      # only 4 answered
+    make_game(app, 1, "category", "TTTTF", finished=datetime(2026, 3, 1, 4, 0))     # has a wrong answer
+    run_evaluate(app)
+    assert "perfect_round" not in _earned(client)
+    make_game(app, 1, "daily", "TTTTT", finished=datetime(2026, 3, 1, 5, 0))
+    run_evaluate(app)
+    assert "perfect_round" in _earned(client)
+
+
+def test_different_categories_count_unique_categories_from_answers(app, client, user, db):
+    ids = [q for q, in db.query(Question.id).filter(Question.pool == "category").order_by(Question.category_id, Question.id).all()]
+    one_per_cat = [db.query(Question.id).filter(Question.pool == "category", Question.category_id == c).first()[0] for c in range(1, 21)]
+    make_game(app, 1, "all", "T" * 9, qids=one_per_cat[:9])
+    run_evaluate(app)
+    assert "cats_10" not in _earned(client)
+    make_game(app, 1, "all", "T" * 11, qids=one_per_cat[:11] , finished=datetime(2026, 3, 2))  # 11 distinct, repeats count once
+    run_evaluate(app)
+    assert "cats_10" in _earned(client) and "cats_20" not in _earned(client)
+    make_game(app, 1, "category", "T" * 20, qids=one_per_cat, finished=datetime(2026, 3, 3))
+    run_evaluate(app)
+    assert "cats_20" in _earned(client) and "cats_30" not in _earned(client)
+
+
+def test_all_rounder_only_after_saved_all_quiz(app, client, user):
+    g = start(client, "all")
+    answer(app, client, g)
+    assert "all_rounder" not in _earned(client) and "first_steps" not in _earned(client)  # started / unsaved
+    api(client, g, "finish")
+    assert {"all_rounder", "first_steps"} <= _earned(client)  # awarded automatically by the save itself
+
+
+def test_daily_achievements_and_streaks_in_kolkata_time(app, client, user, fake_clock):
+    def complete_daily():
+        g = start(client, "daily")
+        play_through(app, client, g, 4)
+        api(client, g, "finish")
+
+    complete_daily()
+    assert "daily_1" in _earned(client) and "daily_3" not in _earned(client)
+    for _ in range(2):
+        fake_clock.advance(days=1)
+        complete_daily()
+    assert {"daily_1", "daily_3"} <= _earned(client) and "daily_7" not in _earned(client)
+    fake_clock.advance(days=3)  # missed days: streak restarts but earned status stays
+    complete_daily()
+    assert "daily_3" in _earned(client)
+
+
+def test_daily_streak_calculation_helper():
+    from datetime import date
+    from app.services.achievements import longest_run_of_days
+    d = lambda n: date(2026, 3, n)
+    assert longest_run_of_days([d(1), d(2), d(2), d(3), d(5), d(6)]) == 3
+    assert longest_run_of_days([]) == 0 and longest_run_of_days([d(9)]) == 1
+
+
+def test_awards_are_unique_idempotent_and_persistent(app, client, user, db):
+    from app.models import UserAchievement
+    make_game(app, 1, "daily", "TTTTT")
+    first = run_evaluate(app)
+    assert {"first_steps", "correct_10"} - set(first) == {"correct_10"} and "first_steps" in first
+    assert run_evaluate(app) == [] and run_evaluate(app) == []
+    assert db.query(UserAchievement).filter_by(user_id=1, achievement_id="first_steps").count() == 1
+    earned_at = db.query(UserAchievement).filter_by(achievement_id="first_steps").one().earned_at
+    assert earned_at is not None
+    client.post("/logout")
+    login(client)
+    assert "first_steps" in _earned(client)
+
+
+def test_achievements_survive_restart_and_clear_all_data(tmp_path):
+    app1 = make_app(tmp_path)
+    c1 = app1.test_client()
+    register(c1)
+    login(c1)
+    make_game(app1, 1, "category", "TTTTT")
+    run_evaluate(app1)
+    app2 = make_app(tmp_path)  # simulated restart / redeploy
+    c2 = app2.test_client()
+    login(c2)
+    assert {"first_steps"} <= _earned(c2)
+    c2.post("/profile/clear-data", data={"confirm": "DELETE"})
+    assert "first_steps" in _earned(c2)  # earned achievements are permanent
+
+
+def test_achievements_are_per_user_and_status_cannot_be_forged(app, client, user):
+    bob = second_user(app)
+    make_game(app, 1, "category", "TTTTT")
+    run_evaluate(app)
+    assert "first_steps" in _earned(client) and "first_steps" not in _earned(bob)
+    assert client.post("/api/achievements", json={"first_steps": "Earned"}).status_code in (400, 405)
+    assert bob.post("/achievements", data={"status": "Earned"}).status_code == 405
+    anon = app.test_client()
+    assert anon.get("/api/achievements").status_code == 401 and anon.get("/achievements").status_code == 302
+
+
+def test_saved_game_flow_awards_automatically_and_failures_do_not_block_save(app, client, user, db, monkeypatch):
+    add_questions(app, "Math", 10)
+    g = start(client, "category", cat_id(app, "Math"))
+    play_through(app, client, g, 5)
+    api(client, g, "finish")
+    cards, _ = _ach_status(client)
+    status = {n: st for n, _, st in cards}
+    assert status["First Steps"] == "Earned" and status["Perfect Round"] == "Earned" and status["Quiz Enthusiast"] == "Locked"
+    from app.services import achievements
+    monkeypatch.setattr(achievements, "evaluate", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    g2 = start(client, "category", cat_id(app, "Math"))
+    answer(app, client, g2)
+    r = api(client, g2, "finish")
+    assert r.status_code == 200 and db.get(QuizGame, g2).status == "completed"  # the game is saved regardless
+
+
+def test_concurrent_evaluations_award_once(app, client, user, db):
+    import threading
+    from app.models import UserAchievement
+    make_game(app, 1, "category", "T" * 12)
+    errors = []
+
+    def go():
+        try:
+            run_evaluate(app)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+    ts = [threading.Thread(target=go) for _ in range(4)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert not errors
+    ids = [a for a, in db.query(UserAchievement.achievement_id).filter_by(user_id=1).all()]
+    assert len(ids) == len(set(ids)) == 6  # first_steps, correct_10, streak_10, perfect_round, perfect_ten, speed_solver
+
+
+# ---------------------------------------------------------------- newer achievements (12)
+def _new(client):
+    return _earned(client)
+
+
+def test_hint_free_hero_and_hint_saver(app, client, user):
+    for i in range(4):
+        make_game(app, 1, "category", "TT", finished=datetime(2026, 3, 1, 3, i))
+    make_game(app, 1, "category", "TH", finished=datetime(2026, 3, 1, 4, 0))   # one hint: not hint-free
+    run_evaluate(app)
+    assert "hint_free_hero" not in _new(client)
+    make_game(app, 1, "category", "TT", finished=datetime(2026, 3, 1, 5, 0))
+    run_evaluate(app)
+    assert "hint_free_hero" in _new(client) and "hint_saver" not in _new(client)   # 6 games with <= 1 hint
+    make_game(app, 1, "category", "HH", finished=datetime(2026, 3, 1, 6, 0))       # two hints: excluded
+    for i in range(3):
+        make_game(app, 1, "category", "TT", finished=datetime(2026, 3, 2, 3, i))
+    run_evaluate(app)
+    assert "hint_saver" not in _new(client)                                          # 9 qualifying games
+    make_game(app, 1, "category", "TH", finished=datetime(2026, 3, 3, 3, 0))        # 10th (one hint is allowed)
+    run_evaluate(app)
+    assert "hint_saver" in _new(client)
+
+
+def test_speed_solver_under_two_minutes(app, client, user):
+    make_game(app, 1, "category", "TT", elapsed=120)
+    run_evaluate(app)
+    assert "speed_solver" not in _new(client)
+    make_game(app, 1, "category", "TT", elapsed=119, finished=datetime(2026, 3, 2))
+    run_evaluate(app)
+    assert "speed_solver" in _new(client)
+
+
+def test_accuracy_expert_and_no_mistakes(app, client, user):
+    make_game(app, 1, "category", "T" * 19, finished=datetime(2026, 3, 1, 3, 0))                    # only 19 questions
+    make_game(app, 1, "category", "T" * 17 + "FF" + "T", finished=datetime(2026, 3, 1, 4, 0))        # 18/20 = 90% -> accuracy yes
+    make_game(app, 1, "category", "T" * 17 + "FFF", finished=datetime(2026, 3, 1, 5, 0))            # 85%
+    run_evaluate(app)
+    assert "accuracy_expert" in _new(client) and "no_mistakes" not in _new(client)
+    s = _new(client)
+    assert "perfect_round" in s
+    make_game(app, 1, "category", "T" * 20, finished=datetime(2026, 3, 2))
+    run_evaluate(app)
+    assert "no_mistakes" in _new(client)
+
+
+def test_accuracy_expert_needs_90_percent_and_20_questions(app, client, user):
+    make_game(app, 1, "category", "T" * 16 + "FFFF")      # 80%
+    make_game(app, 1, "category", "T" * 8 + "F", finished=datetime(2026, 3, 2))   # <20 questions
+    run_evaluate(app)
+    assert "accuracy_expert" not in _new(client)
+
+
+def test_marathon_player_and_knowledge_collector(app, client, user):
+    make_game(app, 1, "all", "T" * 99, qids=list(range(1, 100)))
+    run_evaluate(app)
+    assert "marathon_player" not in _new(client)
+    make_game(app, 1, "all", "T" * 100, qids=list(range(1, 101)), finished=datetime(2026, 3, 2))
+    run_evaluate(app)
+    assert "marathon_player" in _new(client) and "knowledge_collector" not in _new(client)
+    for i in range(4):  # 99 + 100 + 4*200 = 999 answered
+        make_game(app, 1, "daily", "T" * 200, qids=list(range(1, 201)), finished=datetime(2026, 3, 3, 3, i))
+    run_evaluate(app)
+    assert "knowledge_collector" not in _new(client)  # 99 + 100 + 800 = 999 answered (the boundary test covers 1,000)
+
+
+def test_knowledge_collector_boundary(app, client, user):
+    for i in range(4):
+        make_game(app, 1, "category", "T" * 200, qids=list(range(1, 201)), finished=datetime(2026, 3, 1, 3, i))
+    make_game(app, 1, "category", "T" * 199, qids=list(range(1, 200)), finished=datetime(2026, 3, 2))
+    run_evaluate(app)
+    assert "knowledge_collector" not in _new(client)  # 999
+    make_game(app, 1, "category", "T", finished=datetime(2026, 3, 3))
+    run_evaluate(app)
+    assert "knowledge_collector" in _new(client)      # 1000
+
+
+def test_perfect_ten_is_within_one_game(app, client, user):
+    make_game(app, 1, "category", "TTTTTTTTT", finished=datetime(2026, 3, 1, 3, 0))                 # 9 only
+    make_game(app, 1, "daily", "TTTTT", finished=datetime(2026, 3, 1, 4, 0))                         # streak carries over modes...
+    run_evaluate(app)
+    assert "streak_10" in _new(client) and "perfect_ten" not in _new(client)                         # ...but not Perfect Ten
+    make_game(app, 1, "category", "TTTTTFTTTTT", finished=datetime(2026, 3, 1, 5, 0))               # 5 + wrong + 5
+    run_evaluate(app)
+    assert "perfect_ten" not in _new(client)
+    make_game(app, 1, "all", "TTTTTHTTTTT", finished=datetime(2026, 3, 1, 6, 0))                    # hint ignored: 10 correct
+    run_evaluate(app)
+    assert "perfect_ten" in _new(client)
+
+
+def test_category_expert_counts_correct_answers_per_category_across_modes(app, client, user):
+    ids = add_questions(app, "Math", 100) + add_questions(app, "Cricket", 100)
+    math, cricket = ids[:100], ids[100:]
+    make_game(app, 1, "category", "T" * 60, qids=math[:60], finished=datetime(2026, 3, 1, 3, 0))
+    make_game(app, 1, "all", "T" * 99 + "F", qids=cricket, finished=datetime(2026, 3, 1, 4, 0))        # 99 correct Cricket, 1 wrong
+    run_evaluate(app)
+    assert "category_expert" not in _new(client)                                                      # Math 60, Cricket 99
+    make_game(app, 1, "daily", "T" * 39, qids=math[60:99], finished=datetime(2026, 3, 1, 5, 0))       # Math 99
+    run_evaluate(app)
+    assert "category_expert" not in _new(client)
+    make_game(app, 1, "daily", "T", qids=[math[99]], finished=datetime(2026, 3, 1, 6, 0))            # Math 100 (mixed modes)
+    run_evaluate(app)
+    assert "category_expert" in _new(client)
+
+
+def test_daily_perfectionist(app, client, user):
+    make_game(app, 1, "category", "TTTTT", finished=datetime(2026, 3, 1, 3, 0))   # not a daily
+    make_game(app, 1, "daily", "TTTF", finished=datetime(2026, 3, 1, 4, 0))
+    run_evaluate(app)
+    assert "daily_perfectionist" not in _new(client)
+    make_game(app, 1, "daily", "TTTT", finished=datetime(2026, 3, 2, 3, 0))
+    run_evaluate(app)
+    assert "daily_perfectionist" in _new(client)
+
+
+def test_comeback_champion(app, client, user):
+    make_game(app, 1, "category", "TTTTTF", finished=datetime(2026, 3, 1, 3, 0))      # wrong comes last
+    make_game(app, 1, "category", "FTTTT", finished=datetime(2026, 3, 1, 4, 0))       # only 4 after the wrong
+    run_evaluate(app)
+    assert "comeback_champion" not in _new(client)
+    make_game(app, 1, "all", "TTFTTFTTT", finished=datetime(2026, 3, 1, 6, 0))        # 5 correct after the first wrong
+    run_evaluate(app)
+    assert "comeback_champion" in _new(client)
+
+
+def test_quiz_marathon_counts_games_per_kolkata_day(app, client, user):
+    for i in range(9):   # 07:30 IST on 10 Mar
+        make_game(app, 1, ["category", "all", "daily"][i % 3], "T", finished=datetime(2026, 3, 10, 2, i))
+    make_game(app, 1, "category", "T", finished=datetime(2026, 3, 10, 18, 40))        # 00:10 IST on 11 Mar: next day
+    run_evaluate(app)
+    assert "quiz_marathon" not in _new(client)
+    make_game(app, 1, "category", "T", finished=datetime(2026, 3, 10, 18, 29))        # 23:59 IST on 10 Mar: same day
+    run_evaluate(app)
+    assert "quiz_marathon" in _new(client)
+
+
+def test_all_43_achievements_listed_and_older_ones_still_work(app, client, user):
+    from app.services.achievements import ACHIEVEMENTS
+    assert len(ACHIEVEMENTS) == 43 and [a[1] for a in ACHIEVEMENTS[:31]] == [n for n, _ in SPEC[:31]]
+    make_game(app, 1, "daily", "T" * 10, qids=list(range(1, 11)))
+    run_evaluate(app)
+    assert {"first_steps", "correct_10", "streak_10", "perfect_round", "perfect_ten", "daily_1", "daily_perfectionist",
+            "speed_solver"} <= _new(client)

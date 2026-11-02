@@ -174,3 +174,44 @@ def test_env_placeholders_are_ignored_and_bad_url_is_clear(monkeypatch):
 def test_session_cookie_secure_in_production_config(tmp_path):
     app = make_app(tmp_path, SESSION_COOKIE_SECURE=True)
     assert app.config["SESSION_COOKIE_SECURE"] is True
+
+
+def test_footer_text_is_identical_on_every_page(client, user, app):
+    from tests.conftest import add_questions, cat_id, start
+    add_questions(app, "Math", 10)
+    gid = start(client, "category", cat_id(app, "Math"))
+    pages = ["/", "/quizzes", "/all-quiz", "/history", "/leaderboard", "/profile", "/performance", "/achievements",
+             "/bookmarks", "/feedback", f"/quiz/{gid}", "/no-such-page"]
+    for path in pages:
+        html = client.get(path).get_data(as_text=True)
+        assert html.count("Quiz Master Game | 2026") == 1, path
+        assert "Open Trivia" not in html and "CC BY-SA" not in html and "&copy;" not in html and "\u00a9" not in html, path
+        assert '<footer class="content-footer muted small">Quiz Master Game | 2026</footer>' in html, path
+    anon = app.test_client()
+    for path in ["/login", "/register", "/no-such-page"]:
+        html = anon.get(path).get_data(as_text=True)
+        assert html.count("Quiz Master Game | 2026") == 1 and "Open Trivia" not in html, path
+
+
+def test_quizzes_page_emojis_match_the_requested_list_and_keep_order(client, user):
+    import re
+    from html import unescape
+    from app.categories import CATEGORY_NAMES
+    html = client.get("/quizzes").get_data(as_text=True)
+    pairs = re.findall(r'<span class="qz-emoji" aria-hidden="true">([^<]+)</span><span class="category-name">([^<]+)</span>', html)
+    pairs = [(unescape(e), unescape(n)) for e, n in pairs]
+    assert [n for _, n in pairs] == CATEGORY_NAMES and len(pairs) == 56
+    expected = ["\U0001F4DA", "\u2797", "\U0001F52C", "\U0001F680", "\U0001F4DD", "\U0001F4D6", "\U0001F30D", "\U0001F4BB",
+                "\U0001F5A5\uFE0F", "\U0001F916", "\U0001F9E0", "\U0001F310", "\U0001F4CA", "\U0001F30D", "\U0001F9E9",
+                "\u265F\uFE0F", "\U0001F3CF", "\U0001FAC0", "\U0001F947", "\U0001F3CE\uFE0F", "\U0001F3C6", "\u2699\uFE0F",
+                "\U0001F40D", "\u2615", "\U0001F9EE", "\U0001F5B1\uFE0F", "\U0001F418", "\U0001F426", "\U0001F331",
+                "\U0001F3AF", "\U0001F30A", "\U0001F3D4\uFE0F", "\u2708\uFE0F", "\U0001F5FA\uFE0F", "\U0001F3B2",
+                "\U0001F522", "\U0001F5E3\uFE0F", "\U0001F464", "\U0001F4F1", "\U0001F9E0", "\U0001F523", "\U0001F3AC",
+                "\U0001F4F7", "\U0001F3A8", "\U0001F310", "\U0001F3A8", "\U0001F9EA", "\u2696\uFE0F", "\U0001F1EE\U0001F1F3",
+                "\U0001F30E", "\U0001F333", "\U0001F4A1", "\U0001F9E9", "\U0001F602", "\U0001F92F", "\U0001F914"]
+    assert [e for e, _ in pairs] == expected
+    by = dict((n, e) for e, n in pairs)
+    assert by["History"] == "\U0001F4DA" and by["Kannada"] == "\U0001F4DD" and by["Indian History"] == "\U0001F1EE\U0001F1F3"
+    assert by["Trick Questions"] == "\U0001F914" and by["IPL"] == "\U0001F3C6"
+    found = re.findall(r'class="category-name">([^<]+)<', client.get("/quizzes?q=cric").get_data(as_text=True))
+    assert found == ["Cricket"]  # search still works by name

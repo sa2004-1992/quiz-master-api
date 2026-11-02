@@ -15,13 +15,13 @@ def test_scoring_rules():
     assert scoring.final_score([]) == 0
 
 
-def test_category_slice_wraps_and_never_repeats_within_game():
+def test_category_slice_never_wraps_onto_completed_questions():
     ids = [1, 2, 3, 4, 5, 6]
     assert progress.category_slice(ids, 0, 5) == ([1, 2, 3, 4, 5], [0, 1, 2, 3, 4])
-    q, pos = progress.category_slice(ids, 4, 5)
-    assert q == [5, 6, 1, 2, 3] and len(set(q)) == 5
+    assert progress.category_slice(ids, 4, 5) == ([5, 6], [4, 5])      # only what is left; no repeat of 1..3
+    assert progress.category_slice(ids, 6, 5) == ([], [])               # all completed -> empty, never wraps
     assert progress.category_slice([7, 8], 0, 10)[0] == [7, 8]
-    assert progress.next_category_pointer(8, 6) == 3 and progress.next_category_pointer(5, 6) == 6
+    assert progress.next_category_pointer(5, 6) == 6 and progress.next_category_pointer(2, 6) == 3
 
 
 def test_all_quiz_slice_follows_category_order():
@@ -190,15 +190,121 @@ def test_start_resumes_existing_game(app, client, user):
     assert state(client, g1)["resolved_count"] == 1
 
 
-def test_category_pointer_wraps_after_end(app, client, user, db):
-    cid = cat_id(app, "Chess")  # 2 seeded questions
+def test_completed_category_is_not_repeated_automatically(app, client, user, db):
+    cid = cat_id(app, "Chess")  # 2 seeded questions, no Gemini key
     g = start(client, "category", cid)
     assert state(client, g)["total"] == 2
     play_through(app, client, g, 2)
     api(client, g, "finish")
     assert db.get(UserCategoryProgress, (1, cid)).pointer == 2  # end reached
-    g2 = start(client, "category", cid)  # no Gemini key -> wraps to the start
-    assert db.get(QuizGame, g2).question_ids == db.get(QuizGame, g).question_ids
+    r = client.post(f"/quiz/start/category/{cid}", data={"back": "quizzes"})  # plain Start: refused, nothing repeated
+    assert r.status_code == 302 and r.headers["Location"].endswith("/quizzes") and "/quiz/" not in r.headers["Location"]
+    assert db.query(QuizGame).filter_by(status="in_progress").count() == 0
+    assert "completed all available questions" in client.get("/quizzes").get_data(as_text=True)
+    # explicit Play Again restarts from the beginning; saved history is preserved
+    g2 = start_restart(client, cid)
+    assert db.get(QuizGame, g2).question_ids == db.get(QuizGame, g).question_ids and db.get(QuizGame, g2).start_pointer == 0
+    assert db.query(QuizGame).filter_by(status="completed").count() == 1
+
+
+def start_restart(client, cid):
+    import re
+    r = client.post(f"/quiz/start/category/{cid}", data={"restart": "1"})
+    m = re.search(r"/quiz/(\d+)$", r.headers.get("Location", ""))
+    return int(m.group(1)) if m else None
+
+
+def test_play_again_is_refused_while_questions_remain(app, client, user, db):
+    add_questions(app, "Math", 10)  # 12 stored; nothing completed yet
+    cid = cat_id(app, "Math")
+    g = start_restart(client, cid)
+    assert db.get(QuizGame, g).start_pointer == 0 and len(db.get(QuizGame, g).question_ids) == 5
+    api(client, g, "exit")
+    play = start(client, "category", cid)
+    answer(app, client, play)
+    api(client, play, "finish")                       # pointer = 1
+    g2 = start_restart(client, cid)                   # restart flag on a NOT completed category is ignored
+    assert db.get(QuizGame, g2).start_pointer == 1
+
+
+def test_next_sessions_use_next_unseen_questions_without_repeats(app, client, user, db):
+    add_questions(app, "Math", 10)  # 12 questions, 5 per game: 5 + 5 + 2
+    cid = cat_id(app, "Math")
+    seen = []
+    for expected_size in (5, 5, 2):
+        g = start(client, "category", cid)
+        ids = db.get(QuizGame, g).question_ids
+        assert len(ids) == expected_size and not set(ids) & set(seen)   # nothing completed is shown again
+        play_through(app, client, g, len(ids))
+        api(client, g, "finish")
+        seen += ids
+    assert len(seen) == len(set(seen)) == 12 and db.get(UserCategoryProgress, (1, cid)).pointer == 12
+    assert start(client, "category", cid) is None  # completed: no automatic repeat
+
+
+def test_unresolved_questions_come_back_but_completed_ones_do_not(app, client, user, db):
+    add_questions(app, "Math", 10)
+    cid = cat_id(app, "Math")
+    g = start(client, "category", cid)
+    first = db.get(QuizGame, g).question_ids
+    play_through(app, client, g, 2)       # only 2 of 5 resolved
+    api(client, g, "finish")
+    g2 = start(client, "category", cid)
+    ids2 = db.get(QuizGame, g2).question_ids
+    assert ids2[0] == first[2] and not set(ids2) & set(first[:2])
+
+
+def test_quizzes_card_buttons_start_continue_and_after_save(app, client, user, db):
+    import re
+    add_questions(app, "Math", 10)
+    cid = cat_id(app, "Math")
+
+    def card_button(name):
+        html = client.get("/quizzes").get_data(as_text=True)
+        card = html[html.index(f'class="category-name">{name}</span>'):]
+        return re.search(r'<button class="btn btn-primary btn-sm" type="submit">([^<]+)</button>', card).group(1)
+
+    assert card_button("Math") == "Start"
+    g = start(client, "category", cid)
+    answer(app, client, g)
+    assert card_button("Math") == "Continue"             # an unsaved game in progress can be continued
+    api(client, g, "exit")
+    assert card_button("Math") == "Start"                # exit without saving: progress untouched
+    assert db.query(UserCategoryProgress).count() == 0
+    g = start(client, "category", cid)
+    answer(app, client, g)
+    api(client, g, "finish")
+    assert card_button("Math") == "Start"                # after Finish & Save: never "Continue"
+    assert "Continue" not in client.get("/quizzes").get_data(as_text=True)
+
+
+def test_completed_card_shows_play_again_and_is_per_user(app, client, user, db):
+    import re
+    cid = cat_id(app, "Chess")
+    g = start(client, "category", cid)
+    play_through(app, client, g, 2)
+    api(client, g, "finish")
+    html = client.get("/quizzes").get_data(as_text=True)
+    card = html[html.index('class="category-name">Chess</span>'):]
+    assert re.search(r'name="restart" value="1"><button class="btn btn-primary btn-sm" type="submit">Play Again</button>', card)
+    from tests.conftest import register, login
+    bob = app.test_client()
+    register(bob, "bob")
+    login(bob, "bob")
+    bhtml = bob.get("/quizzes").get_data(as_text=True)
+    assert "Play Again" not in bhtml                       # progress is per user and per category
+    assert start(bob, "category", cid) is not None
+
+
+def test_play_all_and_daily_progress_unaffected_by_category_completion(app, client, user, db, fake_clock):
+    cid = cat_id(app, "Chess")
+    g = start(client, "category", cid)
+    play_through(app, client, g, 2)
+    api(client, g, "finish")
+    assert db.query(PlayAllProgress).count() == 0
+    a = start(client, "all")
+    assert a is not None and db.get(QuizGame, a).start_pointer == 0
+    assert start(client, "daily") is not None
 
 
 def test_independent_pointers_between_quiz_types(app, client, user, db):
