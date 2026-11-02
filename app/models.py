@@ -201,3 +201,23 @@ class Feedback(Base):
     rating: Mapped[int] = mapped_column(Integer, nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+
+
+class UserAchievement(Base):
+    """One row per (user, achievement) once earned. Rows are only ever inserted, never revoked."""
+    __tablename__ = "user_achievements"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    achievement_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    earned_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    game_id: Mapped[int] = mapped_column(Integer, nullable=True)  # saved game that triggered it (informational)
+    __table_args__ = (UniqueConstraint("user_id", "achievement_id", name="uq_user_achievement"),)
+
+
+class UserAchievementState(Base):
+    """Cross-mode correct-answer streaks; best value only ever grows."""
+    __tablename__ = "user_achievement_state"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    current_correct_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    best_correct_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

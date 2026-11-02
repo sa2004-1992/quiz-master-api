@@ -78,6 +78,11 @@ def register_hooks(app):
         dark = bool(user and user.preferences and user.preferences.dark_mode)
         return {"current_user": user, "theme": "dark" if dark else "light"}
 
+    @app.template_filter("quiz_emoji")
+    def quiz_emoji(name):
+        from .categories import QUIZZES_PAGE_EMOJI
+        return QUIZZES_PAGE_EMOJI.get(name, "\u2753")
+
     @app.template_filter("cat_emoji")
     def cat_emoji(name):
         from .categories import CATEGORY_EMOJI
