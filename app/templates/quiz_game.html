@@ -11,6 +11,8 @@
       <div><span class="stat-label">Score</span><strong id="qScore">0</strong></div>
       <div><span class="stat-label">Time</span><strong id="qTimer">00:00</strong></div>
       <div><span class="stat-label">Hints left</span><strong id="qHints">–</strong></div>
+      <div><span class="stat-label">Correct</span><strong id="qCorrect">0</strong></div>
+      <div><span class="stat-label">Wrong</span><strong id="qWrong">0</strong></div>
     </div>
   </section>
   <section class="card question-card" id="questionCard" aria-live="polite">
@@ -38,6 +40,6 @@
   <p class="muted small" id="quizMessage" role="status"></p>
 </div>
 <dialog id="resultDialog" class="dialog"><h2>Quiz saved!</h2><p id="resultBody"></p>
-  <div class="dialog-actions"><a class="btn btn-primary" id="resultLink" href="#">View History</a></div></dialog>
+  <div class="dialog-actions"><a class="btn btn-ghost" id="resultHome" href="{{ url_for('pages.home') }}">Home</a><a class="btn btn-primary" id="resultLink" href="#">View History</a></div></dialog>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/quiz.js') }}" defer></script>{% endblock %}
