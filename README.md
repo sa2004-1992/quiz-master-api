@@ -94,7 +94,7 @@ Open Trivia DB allows 50 questions per request and one request every 5 seconds, 
 by design. Each run returns a random sample, so repeat it with `--rounds`; duplicates are skipped.
 These sources are English-only, cover only some categories (see `OPENTDB_MAP` / `TRIVIA_API_MAP` in
 `app/services/question_sources.py`), and give no explanations (a short "The correct answer is ..." is stored).
-Licensing: Open Trivia DB is CC BY-SA 4.0 (attribution is shown in the page footer); The Trivia API is free
+Licensing: Open Trivia DB is CC BY-SA 4.0 (attribution is required if you use these questions publicly; the footer no longer shows it); The Trivia API is free
 for non-commercial use only. Check both providers' current terms before launching publicly.
 
 Optional HTTP trigger: set `ADMIN_API_TOKEN`, then
@@ -134,6 +134,9 @@ pip install -r requirements-dev.txt
 pytest                                   # SQLite, ~35 s
 TEST_DATABASE_URL=postgresql+psycopg2://user:pw@localhost/quiztest pytest   # real PostgreSQL
 ```
+Optional browser-side tests (they run the real `quiz.js` in a DOM and are skipped if jsdom is missing):
+`npm install jsdom` in any folder, then `NODE_PATH=<that folder>/node_modules pytest tests/test_quiz_ui.py`.
+
 (The Postgres run drops and recreates the `public` schema of that database - use a throwaway DB.)
 
 ## Rules as implemented
@@ -144,8 +147,10 @@ TEST_DATABASE_URL=postgresql+psycopg2://user:pw@localhost/quiztest pytest   # re
   A hint reveals the answer, resolves the question, never scores.
 * **Timer:** server timestamps; paused time excluded; clients never send elapsed time.
 * **Quiz Type 1:** pointer per user + category into the category's questions ordered by id; a game has
-  `QUESTIONS_PER_GAME` (10) questions; the pointer advances by the number resolved on Finish & Save only.
-  Near the end of the stored list the app asks Gemini for more before wrapping to the start.
+  `QUESTIONS_PER_GAME` (10) questions; the pointer advances by the number resolved on Finish & Save only, so the next
+  Start loads the next unseen questions and never repeats completed ones. Near the end of the stored list the app asks
+  Gemini for more. When every stored question is completed, Start is refused with a message and the card shows
+  **Play Again**, an explicit restart from the beginning (saved history is kept). Exiting without saving changes nothing.
 * **Quiz Type 2:** one counter per user. Position *g* -> category `g mod 56` (required order), round
   `g div 56`, question `round mod n`. One game = `ALL_QUIZ_QUESTIONS` (56) positions, i.e. one question
   per category. Categories with no stored questions are skipped.
@@ -183,6 +188,30 @@ Combined stats (games, score, best game, fastest game time, accuracy = correct /
 saved games of all three modes; the *By Quiz Type* table keeps Category Quizzes, All Quiz and Daily Quiz separate.
 The *Last 10 Game Scores* charts are drawn client-side as plain SVG (`app/static/js/performance.js`, no library) and
 nothing is rendered until Bar or Pie is chosen. The chart data is the user's latest 10 saved games, oldest first.
+
+## Achievements & Badges
+
+43 achievements (`app/services/achievements.py`, exact names/requirements/order) are evaluated on the server from the
+user's saved games across all three modes, right after each game is saved and again when the page is opened (so older
+history is picked up). Awards live in `user_achievements` (unique per user + achievement, with the earned date) and are
+never revoked - not even by Clear All Data. Rules: correct-answer streaks run across modes in saved-game order, a wrong
+answer resets them and a hint-revealed question neither extends nor resets; "different categories" counts the categories
+of questions the user answered; Perfect Round needs 5+ answered questions and no wrong answer in one saved game;
+daily streaks count consecutive Asia/Kolkata calendar days.
+The 12 newer ones: Hint-Free Hero (5 saved games with 0 hints), Speed Solver (a saved game under 120 s),
+Accuracy Expert (>= 90% in one game with >= 20 answered questions), No Mistakes (>= 20 answered, 0 wrong),
+Marathon Player (>= 100 answered in one game), Knowledge Collector (1,000 answered overall), Perfect Ten (10 correct in a
+row inside one game), Hint Saver (10 saved games with <= 1 hint), Category Expert (100 correct answers in one category,
+across modes), Daily Perfectionist (a saved Daily Challenge with no wrong answer), Comeback Champion (>= 5 correct
+answers after a wrong answer in the same game), Quiz Marathon (10 saved games on one Asia/Kolkata day).
+"Questions" in these rules means answered questions (hint-revealed ones are not answers). A failure while awarding never blocks saving a game.
+
+## Feedback
+
+`/feedback`: required 1-5 star rating and message (validated on the server; whitespace-only is rejected). The page sends
+`POST /api/feedback` and re-renders *My Submitted Feedback* from the response without a reload; without JavaScript the
+plain form still works. Rows are stored in `feedback` (user id, rating, message, created time) and listed newest first,
+only for the logged-in user, in the app timezone.
 
 ## Security
 
