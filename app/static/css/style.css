@@ -181,3 +181,9 @@ input,select,textarea{font:inherit;color:var(--text);background:var(--bg);border
 /* Quizzes page: emoji beside each category name */
 .category-label{display:flex;align-items:center;gap:.65rem;min-width:0}.category-label .category-name{overflow-wrap:anywhere}
 .qz-emoji{flex:none;width:1.75rem;text-align:center;font-size:1.3rem;line-height:1}
+
+/* Answer feedback badges on the options */
+.option .opt-badge{margin-left:auto;font-weight:700;white-space:nowrap;font-size:.95rem}
+.option .opt-badge.ok{color:var(--success)}.option .opt-badge.bad{color:var(--danger)}
+.option.pending{border-color:var(--primary)}
+@media(max-width:600px){.option{flex-wrap:wrap}.option .opt-badge{margin-left:2.8rem;font-size:.85rem}}
