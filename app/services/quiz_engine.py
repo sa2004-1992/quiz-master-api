@@ -278,6 +278,8 @@ def game_state(session, game):
     cat = session.get(Category, q.category_id)
     ans = by_q.get(q.id)
     score = scoring.final_score([a.points for a in answers])
+    correct_n = sum(1 for a in answers if a.is_correct)
+    wrong_n = sum(1 for a in answers if a.selected_option is not None and not a.is_correct)
     question = {"id": q.id, "number": idx + 1, "text": q.question_text, "options": q.options(),
                 "category": cat.name, "difficulty": q.difficulty.capitalize(), "resolved": ans is not None}
     if ans is not None:  # the answer is only revealed once the question is resolved
@@ -294,7 +296,7 @@ def game_state(session, game):
         "quiz_label": ("Category Quiz" if game.quiz_type == "category" else label),
         "category": game.category.name if game.category else None,
         "status": game.status, "total": len(qids), "current_index": idx,
-        "resolved_count": game.resolved_count, "score": score,
+        "resolved_count": game.resolved_count, "score": score, "correct": correct_n, "wrong": wrong_n,
         "hints_used": game.hints_used, "hints_max": game.hints_max,
         "hints_left": max(0, game.hints_max - game.hints_used),
         "elapsed_seconds": elapsed_seconds(game), "paused": game.paused_at is not None,
