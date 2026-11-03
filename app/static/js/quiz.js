@@ -3,7 +3,7 @@
   var root = document.getElementById('quiz'); if (!root) return;
   var base = root.getAttribute('data-base'), csrf = window.QM.csrf, state = null, tickStart = 0, tickBase = 0, busy = false;
   var $ = function (id) { return document.getElementById(id); };
-  var el = { type: $('qType'), cat: $('qCategory'), num: $('qNumber'), score: $('qScore'), timer: $('qTimer'), hints: $('qHints'),
+  var el = { type: $('qType'), cat: $('qCategory'), num: $('qNumber'), score: $('qScore'), correct: $('qCorrect'), wrong: $('qWrong'), timer: $('qTimer'), hints: $('qHints'),
     text: $('qText'), options: $('options'), fb: $('feedback'), verdict: $('verdict'), expl: $('explanation'), bm: $('bookmarkBtn'),
     prev: $('prevBtn'), next: $('nextBtn'), hint: $('hintBtn'), pause: $('pauseBtn'), exit: $('exitBtn'), finish: $('finishBtn'),
     msg: $('quizMessage'), banner: $('pausedBanner'), card: $('questionCard') };
@@ -26,17 +26,22 @@
       if (res.ok && res.state) { apply(res.state); return res; }
       if (res.ok) return res;
       say(res.error || 'Something went wrong.');
-      if (res.code === 'out_of_sync' || res.code === 'duplicate_answer' || res.code === 'paused') load();
+      load();  // always re-sync with the server's state (re-enables options only if the answer was not recorded)
       if (res.status === 404) { say('This game is no longer available.'); setTimeout(function () { location.href = '/quizzes'; }, 1500); }
       return res;
     });
   }
   function load() { return api('/state', 'GET').then(function (r) { if (r.ok) apply(r.state); else say(r.error); }); }
 
+  function badge(kind, text) { var b = document.createElement('span'); b.className = 'opt-badge ' + kind; b.textContent = text; return b; }
+
   function apply(s) {
     state = s; tickBase = s.elapsed_seconds; tickStart = performance.now();
     el.type.textContent = s.quiz_label; el.cat.textContent = s.question.category; el.cat.hidden = s.quiz_type === 'category' ? false : false;
-    el.num.textContent = s.question.number + ' / ' + s.total; el.score.textContent = s.score;
+    // Daily Quiz shows "n / total"; Category Quiz and All Quiz show only the current number (the total stays in the state).
+    el.num.textContent = s.quiz_type === 'daily' ? s.question.number + ' / ' + s.total : String(s.question.number);
+    el.score.textContent = s.score;
+    el.correct.textContent = s.correct; el.wrong.textContent = s.wrong;
     el.hints.textContent = s.hints_left + ' / ' + s.hints_max; el.timer.textContent = fmt(s.elapsed_seconds);
     el.text.textContent = s.question.text;
     var q = s.question; el.options.textContent = '';
@@ -45,8 +50,8 @@
       var l = document.createElement('span'); l.className = 'letter'; l.textContent = k;
       var t = document.createElement('span'); t.textContent = q.options[k]; b.append(l, t);
       if (q.resolved) { b.disabled = true;
-        if (k === q.correct_answer) b.classList.add('correct');
-        else if (k === q.selected) b.classList.add('incorrect'); }
+        if (k === q.correct_answer) { b.classList.add('correct'); b.appendChild(badge('ok', '\u2705 Correct Answer!')); }
+        else if (k === q.selected) { b.classList.add('incorrect'); b.appendChild(badge('bad', '\u274C Wrong Answer!')); } }
       b.addEventListener('click', function () { answer(k); }); el.options.appendChild(b);
     });
     el.fb.hidden = !q.resolved;
@@ -63,7 +68,14 @@
     el.options.querySelectorAll('.option').forEach(function (b) { if (paused) b.disabled = true; });
   }
 
-  function answer(k) { run('/answer', { question_id: state.question.id, option: k }); }
+  function lockOptions(selected) {  // one answer per question: lock all four the instant one is chosen
+    el.options.querySelectorAll('.option').forEach(function (b) { b.disabled = true; if (b.dataset.key === selected) b.classList.add('pending'); });
+  }
+  function answer(k) {
+    if (busy || !state || state.question.resolved || state.paused) return;
+    lockOptions(k);
+    run('/answer', { question_id: state.question.id, option: k });
+  }
   el.hint.addEventListener('click', function () { run('/hint', { question_id: state.question.id }); });
   el.prev.addEventListener('click', function () { run('/previous'); });
   el.next.addEventListener('click', function () { run('/next'); });
@@ -86,7 +98,7 @@
       if (!r || !r.ok) return;
       var s = r.summary, d = $('resultDialog');
       $('resultBody').textContent = 'Score: ' + s.score + ' · Answered: ' + s.resolved + ' of ' + s.total + ' · Correct: ' + s.correct + ' · Time: ' + fmt(s.elapsed_seconds);
-      $('resultLink').href = r.redirect; d.showModal(); d.addEventListener('close', function () { location.href = r.redirect; });
+      $('resultLink').href = r.redirect; el.finish.disabled = true; d.showModal(); d.addEventListener('close', function () { location.href = r.redirect; });
     });
   });
 
