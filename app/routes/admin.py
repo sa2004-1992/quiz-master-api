@@ -25,7 +25,7 @@ def generate_questions():
         return jsonify({"ok": False, "error": "AI generation is not configured."}), 503
     body = request.get_json(silent=True) or {}
     pool = body.get("pool", "category")
-    if pool not in ("category", "daily"):
+    if pool not in ("category", "all", "daily"):
         return jsonify({"ok": False, "error": "Invalid pool."}), 400
     db = get_session()
     cat = db.scalars(select(Category).where(Category.name == body.get("category"))).first()
