@@ -52,7 +52,8 @@ class Category(Base):
 class Question(Base):
     __tablename__ = "questions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    pool: Mapped[str] = mapped_column(String(10), nullable=False, default="category")  # category | daily
+    # quiz mode this question belongs to: 'category' (Quiz 1) | 'all' (Quiz 2) | 'daily' (Quiz 3)
+    pool: Mapped[str] = mapped_column(String(10), nullable=False, default="category")
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
     option_a: Mapped[str] = mapped_column(Text, nullable=False)
@@ -68,12 +69,17 @@ class Question(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     category = relationship("Category")
     __table_args__ = (
-        UniqueConstraint("pool", "question_hash", name="uq_questions_pool_hash"),
+        UniqueConstraint("pool", "category_id", "question_hash", name="uq_questions_pool_cat_hash"),
         CheckConstraint("correct_answer IN ('A','B','C','D')", name="ck_questions_correct"),
-        CheckConstraint("pool IN ('category','daily')", name="ck_questions_pool"),
+        CheckConstraint("pool IN ('category','all','daily')", name="ck_questions_pool"),
         CheckConstraint("difficulty IN ('easy','medium','hard')", name="ck_questions_difficulty"),
         Index("ix_questions_pool_cat_id", "pool", "category_id", "id"),
     )
+
+    @property
+    def quiz_mode(self):
+        """Alias: the quiz-mode identifier is stored in the ``pool`` column."""
+        return self.pool
 
     def options(self):
         return {"A": self.option_a, "B": self.option_b, "C": self.option_c, "D": self.option_d}

@@ -3,9 +3,10 @@ import logging
 
 from flask import g
 from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.schema import CreateIndex, CreateTable
 from sqlalchemy.orm import sessionmaker
 
-from .models import Base
+from .models import Base, Question
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +80,61 @@ def upgrade_columns(conn):
         log.info("Added quiz_games.answered_count / wrong_count and backfilled saved games")
 
 
+def upgrade_questions_pg(conn):
+    """PostgreSQL: allow the 'all' quiz mode and make duplicate detection per (mode, category).
+    Existing rows are untouched; every statement is idempotent."""
+    insp = inspect(conn)
+    if "questions" not in insp.get_table_names():
+        return
+    ck = conn.execute(text("SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                           "WHERE conname = 'ck_questions_pool' AND conrelid = 'questions'::regclass")).scalar()
+    if ck is None or "'all'" not in ck:
+        conn.execute(text("ALTER TABLE questions DROP CONSTRAINT IF EXISTS ck_questions_pool"))
+        conn.execute(text("ALTER TABLE questions ADD CONSTRAINT ck_questions_pool "
+                          "CHECK (pool IN ('category','all','daily'))"))
+    have = {r[0] for r in conn.execute(text("SELECT conname FROM pg_constraint WHERE conrelid = 'questions'::regclass"))}
+    if "uq_questions_pool_cat_hash" not in have:
+        conn.execute(text("ALTER TABLE questions ADD CONSTRAINT uq_questions_pool_cat_hash "
+                          "UNIQUE (pool, category_id, question_hash)"))
+    if "uq_questions_pool_hash" in have:  # superseded by the per-category constraint above
+        conn.execute(text("ALTER TABLE questions DROP CONSTRAINT uq_questions_pool_hash"))
+
+
+def upgrade_questions_sqlite(engine):
+    """SQLite cannot alter constraints, so an old questions table is rebuilt (all rows and ids are copied,
+    foreign keys from answers/bookmarks keep pointing at it). Runs once, only if the old schema is detected."""
+    with engine.connect() as c:
+        ddl = c.exec_driver_sql("SELECT sql FROM sqlite_master WHERE type='table' AND name='questions'").scalar()
+    if not ddl or ("'all'" in ddl and "uq_questions_pool_cat_hash" in ddl):
+        return
+    raw = engine.raw_connection()
+    try:
+        raw.isolation_level = None  # autocommit: we issue BEGIN/COMMIT ourselves (PRAGMAs need this)
+        cur = raw.cursor()
+        cur.execute("PRAGMA foreign_keys=OFF")
+        cur.execute("PRAGMA legacy_alter_table=ON")
+        cols = ", ".join(c.name for c in Question.__table__.columns)
+        try:
+            cur.execute("BEGIN")
+            cur.execute("ALTER TABLE questions RENAME TO questions_old")
+            cur.execute("DROP INDEX IF EXISTS ix_questions_pool_cat_id")
+            cur.execute(str(CreateTable(Question.__table__).compile(dialect=engine.dialect)))
+            for idx in Question.__table__.indexes:
+                cur.execute(str(CreateIndex(idx).compile(dialect=engine.dialect)))
+            cur.execute(f"INSERT INTO questions ({cols}) SELECT {cols} FROM questions_old")
+            cur.execute("DROP TABLE questions_old")
+            cur.execute("COMMIT")
+            log.info("Upgraded the SQLite questions table (quiz modes + per-category duplicate rule)")
+        except Exception:
+            cur.execute("ROLLBACK")
+            raise
+        finally:
+            cur.execute("PRAGMA legacy_alter_table=OFF")
+            cur.execute("PRAGMA foreign_keys=ON")
+    finally:
+        raw.close()
+
+
 def create_schema(app):
     """Idempotent, non-destructive schema creation (never drops tables)."""
     engine = app.extensions["db_engine"]
@@ -87,7 +143,9 @@ def create_schema(app):
             conn.execute(text("SELECT pg_advisory_xact_lock(727001)"))  # serialize multi-worker startup
             Base.metadata.create_all(conn)
             upgrade_columns(conn)
+            upgrade_questions_pg(conn)
     else:
+        upgrade_questions_sqlite(engine)
         with engine.begin() as conn:
             Base.metadata.create_all(conn)
             upgrade_columns(conn)

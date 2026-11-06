@@ -31,6 +31,12 @@ def create_app(overrides=None):
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     init_engine(app)
+
+    @app.before_request
+    def _csv_upload_limit():  # registered before CSRF so the larger limit applies to CSV uploads only
+        if request.path.startswith("/api/admin/questions/csv/"):
+            request.max_content_length = app.config["CSV_MAX_BYTES"] + 64 * 1024
+
     csrf.init_app(app)
     limiter.init_app(app)
 
@@ -39,9 +45,10 @@ def create_app(overrides=None):
 
     from .auth.routes import bp as auth_bp
     from .routes.admin import bp as admin_bp
+    from .routes.admin_questions import bp as qadmin_bp
     from .routes.pages import bp as pages_bp
     from .routes.quiz import bp as quiz_bp
-    for bp in (auth_bp, pages_bp, quiz_bp, admin_bp):
+    for bp in (auth_bp, pages_bp, quiz_bp, admin_bp, qadmin_bp):
         app.register_blueprint(bp)
 
     register_hooks(app)
@@ -76,7 +83,8 @@ def register_hooks(app):
     def inject():
         user = getattr(g, "user", None)
         dark = bool(user and user.preferences and user.preferences.dark_mode)
-        return {"current_user": user, "theme": "dark" if dark else "light"}
+        from .auth.security import is_admin
+        return {"current_user": user, "theme": "dark" if dark else "light", "is_admin": is_admin(user)}
 
     @app.template_filter("quiz_emoji")
     def quiz_emoji(name):
@@ -170,7 +178,7 @@ def register_cli(app):
     @app.cli.command("import-questions")
     @click.option("--source", type=click.Choice(["opentdb", "trivia_api", "all"]), default="all", show_default=True)
     @click.option("--rounds", default=1, show_default=True, help="Repeat the import to collect more questions.")
-    @click.option("--pool", type=click.Choice(["category", "daily"]), default="category", show_default=True)
+    @click.option("--pool", type=click.Choice(["category", "all", "daily"]), default="category", show_default=True)
     def import_cmd(source, rounds, pool):
         """Import ready-made questions (Open Trivia DB / The Trivia API) into the database."""
         from .services.question_sources import import_all
@@ -182,7 +190,7 @@ def register_cli(app):
     @app.cli.command("generate-questions")
     @click.option("--category", "category_name", default=None, help="Category name (default: all).")
     @click.option("--batches", default=1, show_default=True)
-    @click.option("--pool", type=click.Choice(["category", "daily"]), default="category")
+    @click.option("--pool", type=click.Choice(["category", "all", "daily"]), default="category")
     def generate_cmd(category_name, batches, pool):
         """Pre-generate and store questions with Gemini (uses GEMINI_API_KEY)."""
         from sqlalchemy import select
