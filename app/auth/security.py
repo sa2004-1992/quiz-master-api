@@ -2,7 +2,7 @@
 from functools import wraps
 from urllib.parse import urlparse
 
-from flask import current_app, flash, g, jsonify, redirect, request, session, url_for
+from flask import abort, current_app, flash, g, jsonify, redirect, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 _DUMMY_HASH = None
@@ -49,3 +49,28 @@ def start_session(user, remember):
     session.clear()  # renew the session on authentication (prevents fixation)
     session["uid"] = user.id
     session.permanent = bool(remember)
+
+
+def is_admin(user):
+    """Administrators are the usernames listed in the ADMIN_USERNAMES environment variable."""
+    if user is None:
+        return False
+    return user.username_lower in current_app.config.get("ADMIN_USERNAMES", frozenset())
+
+
+def admin_required(view):
+    """Logged in AND listed in ADMIN_USERNAMES; otherwise 403 (404 when no administrator is configured)."""
+    @wraps(view)
+    @login_required
+    def wrapper(*args, **kwargs):
+        api = request.path.startswith("/api/")
+        if not current_app.config.get("ADMIN_USERNAMES"):  # feature is off until an admin is configured
+            if api:
+                return jsonify({"ok": False, "error": "Not found."}), 404
+            abort(404)
+        if not is_admin(g.user):
+            if api:
+                return jsonify({"ok": False, "error": "Administrator access required."}), 403
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapper
