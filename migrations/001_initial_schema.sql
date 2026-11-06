@@ -78,9 +78,9 @@ CREATE TABLE IF NOT EXISTS questions (
 	daily_date DATE, 
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, 
 	PRIMARY KEY (id), 
-	CONSTRAINT uq_questions_pool_hash UNIQUE (pool, question_hash), 
+	CONSTRAINT uq_questions_pool_cat_hash UNIQUE (pool, category_id, question_hash), 
 	CONSTRAINT ck_questions_correct CHECK (correct_answer IN ('A','B','C','D')), 
-	CONSTRAINT ck_questions_pool CHECK (pool IN ('category','daily')), 
+	CONSTRAINT ck_questions_pool CHECK (pool IN ('category','all','daily')), 
 	CONSTRAINT ck_questions_difficulty CHECK (difficulty IN ('easy','medium','hard')), 
 	FOREIGN KEY(category_id) REFERENCES categories (id)
 );
