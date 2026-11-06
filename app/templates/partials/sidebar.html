@@ -19,6 +19,7 @@
       </div>
     </details>
     <a class="nav-item {{ 'active' if ep == 'pages.feedback' }}" href="{{ url_for('pages.feedback') }}">{{ icon('message') }}<span>Feedback</span></a>
+    {% if is_admin %}<a class="nav-item {{ 'active' if ep == 'qadmin.page' }}" href="{{ url_for('qadmin.page') }}">{{ icon('list') }}<span>Manage Questions</span></a>{% endif %}
     <button type="button" class="nav-item nav-button" id="themeToggle" aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">{{ icon('moon') }}<span>Dark Mode</span><span class="switch" aria-hidden="true"></span></button>
     <form method="post" action="{{ url_for('auth.logout') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
