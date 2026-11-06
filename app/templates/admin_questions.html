@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Manage Questions{% endblock %}
+{% block heading %}Manage Questions{% endblock %}
+{% block content %}
+<div class="page-head"><div><h2>Manage Questions</h2>
+  <p class="muted">Add questions to the three separate datasets: Category Quiz, All Quiz and Daily Quiz. Nothing is ever copied between them.</p></div></div>
+
+<article class="card qa-card" id="countsCard">
+  <h3>Question bank</h3>
+  <p class="muted small">Stored questions per quiz mode.</p>
+  <div class="table-wrap"><table class="table qa-table">
+    <thead><tr><th>Category</th><th class="num">Category Quiz</th><th class="num">All Quiz</th><th class="num">Daily Quiz</th></tr></thead>
+    <tbody id="countsRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+    <tfoot id="countsTotals"></tfoot>
+  </table></div>
+</article>
+
+<article class="card qa-card" id="csvCard">
+  <h3>Import from CSV</h3>
+  <p class="muted small">Exactly 8 columns: <code>{{ csv_columns|join(', ') }}</code>. UTF-8 (Kannada supported). No id or quiz mode column. Max {{ max_mb }} MB.
+    <a href="{{ url_for('qadmin.csv_template') }}">Download a template</a>.</p>
+  <div class="qa-row">
+    <div class="field"><label for="csvMode">Quiz mode</label>
+      <select id="csvMode">{% for v, label in modes %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></div>
+    <div class="field" id="csvCategoryField"><label for="csvCategory">Category</label>
+      <select id="csvCategory"><option value="any">Use category_name from each row</option>
+        {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="dropzone" id="csvDrop" tabindex="0" role="button" aria-label="Choose or drop a CSV file">
+    <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+    <p><strong>Drag and drop a CSV file here</strong> or click to choose one</p>
+    <p class="muted small" id="csvFileName">No file selected</p>
+  </div>
+  <div class="qa-actions"><button type="button" class="btn btn-primary" id="csvPreviewBtn" disabled>Validate &amp; Preview</button></div>
+  <div id="csvPreview" hidden>
+    <div class="grid grid-4 qa-stats" id="csvStats"></div>
+    <div class="table-wrap"><table class="table qa-table"><thead><tr><th>Row</th><th>Category</th><th>Question</th><th>Answer</th><th>Result</th></tr></thead><tbody id="csvRows"></tbody></table></div>
+    <div id="csvProblems"></div>
+    <div class="qa-actions"><button type="button" class="btn btn-primary" id="csvImportBtn" disabled>Confirm Import</button>
+      <span class="muted small" id="csvImportHint"></span></div>
+  </div>
+  <div id="csvResult" class="alert" role="status" hidden></div>
+</article>
+
+<article class="card qa-card" id="genCard">
+  <h3>Generate with Gemini</h3>
+  {% if not gemini_ready %}<div class="alert alert-info">Gemini is not configured on this server (set <code>GEMINI_API_KEY</code>). CSV import still works.</div>{% endif %}
+  <form id="genForm" novalidate>
+    <div class="qa-row">
+      <div class="field"><label for="genMode">Quiz mode</label>
+        <select id="genMode">{% for v, label in modes %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></div>
+      <div class="field" id="genCategoryField"><label for="genCategory">Category</label>
+        <select id="genCategory">{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="genCount">Number of questions (1–{{ max_generate }})</label>
+        <input id="genCount" type="number" min="1" max="{{ max_generate }}" value="10"></div>
+      <div class="field"><label for="genLang">Language</label>
+        <select id="genLang"><option value="auto">Auto (Kannada for the Kannada category, English otherwise)</option><option value="en">English</option><option value="kn">Kannada</option></select></div>
+    </div>
+    <p class="muted small" id="genHint"></p>
+    <button type="submit" class="btn btn-primary" id="genBtn">Generate Questions</button>
+  </form>
+  <div id="genResult" class="alert" role="status" hidden></div>
+  <div class="table-wrap" id="genDetailsWrap" hidden><table class="table qa-table"><thead><tr><th>Category</th><th class="num">Generated</th><th class="num">Saved</th><th class="num">Duplicates</th><th class="num">Invalid</th></tr></thead><tbody id="genDetails"></tbody></table></div>
+</article>
+
+<article class="card qa-card" id="browseCard">
+  <h3>Browse stored questions</h3>
+  <div class="qa-row">
+    <div class="field"><label for="brMode">Quiz mode</label>
+      <select id="brMode">{% for v, label in modes %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="brCategory">Category</label>
+      <select id="brCategory"><option value="">All categories</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="qa-actions"><button type="button" class="btn btn-ghost" id="brBtn">Show questions</button></div>
+  <div class="table-wrap" id="brWrap" hidden><table class="table qa-table"><thead><tr><th>ID</th><th>Category</th><th>Question</th><th>Answer</th><th>Source</th></tr></thead><tbody id="brRows"></tbody></table></div>
+  <div class="pagination" id="brPager" hidden><button type="button" class="btn btn-ghost btn-sm" id="brPrev">&laquo; Previous</button><span class="muted" id="brInfo"></span><button type="button" class="btn btn-ghost btn-sm" id="brNext">Next &raquo;</button></div>
+</article>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/admin_questions.js') }}" defer></script>{% endblock %}
