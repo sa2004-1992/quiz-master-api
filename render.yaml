@@ -20,5 +20,7 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: ADMIN_USERNAMES
+        sync: false
       - key: GEMINI_MODEL
         value: gemini-3.1-flash-lite

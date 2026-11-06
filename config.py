@@ -93,6 +93,13 @@ class Config:
     MAX_GENERATIONS_PER_REQUEST = _int("MAX_GENERATIONS_PER_REQUEST", 3)
 
     ADMIN_API_TOKEN = _env("ADMIN_API_TOKEN")
+    # Comma-separated usernames allowed to manage questions (CSV import / Gemini generation page)
+    ADMIN_USERNAMES = frozenset(u.strip().lower() for u in _env("ADMIN_USERNAMES").split(",") if u.strip())
+    CSV_MAX_BYTES = _int("CSV_MAX_BYTES", 2 * 1024 * 1024)
+    CSV_MAX_ROWS = _int("CSV_MAX_ROWS", 2000)
+    ADMIN_MAX_GENERATE = _int("ADMIN_MAX_GENERATE", 30)
+    ADMIN_GENERATE_RATE_LIMIT = os.getenv("ADMIN_GENERATE_RATE_LIMIT", "6 per minute")
+    ADMIN_CSV_RATE_LIMIT = os.getenv("ADMIN_CSV_RATE_LIMIT", "30 per minute")
 
 
 def finalize(app):
