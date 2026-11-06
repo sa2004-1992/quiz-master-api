@@ -27,7 +27,7 @@ def seed_categories(session):
 
 
 def seed_questions(session):
-    """Insert the starter bank into both pools (daily pool excludes Kannada). Safe to re-run."""
+    """Insert the starter bank into each quiz mode's own pool (daily excludes Kannada). Safe to re-run."""
     cats = {c.name: c for c in session.scalars(select(Category))}
     total = 0
     for name, items in SEED.items():
@@ -35,10 +35,10 @@ def seed_questions(session):
         raw = [{"question": q, "option_a": o[0], "option_b": o[1], "option_c": o[2], "option_d": o[3],
                 "correct_answer": ans, "explanation": expl, "difficulty": diff}
                for q, o, ans, expl, diff in items]
-        ins, _ = store_questions(session, cat, "category", raw, source="seed")
-        total += ins
-        if name != "Kannada":
-            ins, _ = store_questions(session, cat, "daily", raw, source="seed")
+        for pool in ("category", "all", "daily"):  # each quiz mode owns its own copy of the starter bank
+            if pool == "daily" and name == "Kannada":
+                continue  # the Daily Quiz starter pool is English only
+            ins, _ = store_questions(session, cat, pool, raw, source="seed")
             total += ins
     if total:
         log.info("Seeded %s starter questions", total)

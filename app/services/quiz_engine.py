@@ -151,7 +151,7 @@ def start_all_game(session, user_id):
     count = _cfg("ALL_QUIZ_QUESTIONS")
 
     def build():
-        by_cat = {cid: _ordered_ids(session, "category", cid) for cid in order}
+        by_cat = {cid: _ordered_ids(session, "all", cid) for cid in order}  # Quiz 2 uses its own dataset
         return progress.all_quiz_slice(order, by_cat, pointer, count)
 
     qids, positions, needs = build()
@@ -159,7 +159,7 @@ def start_all_game(session, user_id):
         session.rollback()
         by_id = {c.id: c for c in cats}
         for cid in needs[:_cfg("MAX_GENERATIONS_PER_REQUEST")]:
-            generate_and_store(session, by_id[cid], "category")
+            generate_and_store(session, by_id[cid], "all")
         qids, positions, needs = build()
     if not qids:
         raise QuizError("No questions are available yet. Please try again later.", 503, "no_questions")
@@ -403,7 +403,7 @@ def _extend_game(session, game):
     else:
         cats = list(session.scalars(select(Category).order_by(Category.position)))
         order = [c.id for c in cats]
-        by_cat = {cid: _ordered_ids(session, "category", cid) for cid in order}
+        by_cat = {cid: _ordered_ids(session, "all", cid) for cid in order}
         qs, ps, _ = progress.all_quiz_slice(order, by_cat, last + 1, count + len(existing))
         qids = [q for q in qs if q not in existing][:count]
         positions = [p for q, p in zip(qs, ps) if q not in existing][:count]

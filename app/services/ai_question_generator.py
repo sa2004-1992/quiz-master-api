@@ -16,11 +16,10 @@ from collections import defaultdict, deque
 import requests
 from flask import current_app
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from ..categories import CATEGORY_GUIDANCE
 from ..models import Category, Question
-from .question_validator import ValidationError, validate_question
+from .question_bank import store_detailed
 
 log = logging.getLogger(__name__)
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -179,43 +178,28 @@ def get_generator():
 
 
 def store_questions(session, category, pool, items, source="ai"):
-    """Validate and insert raw items. Returns (inserted, rejected)."""
-    language = category.language
-    hashes_existing = set(session.scalars(select(Question.question_hash).where(Question.pool == pool)))
-    inserted = rejected = 0
-    for raw in items:
-        try:
-            data = validate_question(raw, language)
-        except ValidationError as exc:
-            rejected += 1
-            log.info("Rejected question for %s: %s", category.name, exc)
-            continue
-        if data["question_hash"] in hashes_existing:
-            rejected += 1
-            continue
-        session.add(Question(pool=pool, category_id=category.id, source=source, **data))
-        try:
-            session.commit()
-            hashes_existing.add(data["question_hash"])
-            inserted += 1
-        except IntegrityError:
-            session.rollback()  # duplicate inserted concurrently
-            rejected += 1
-    return inserted, rejected
+    """Validate, de-duplicate (inside this mode + category) and store. Returns (inserted, rejected)."""
+    res = store_detailed(session, category, pool, items, source=source)
+    return res["inserted"], res["duplicates"] + res["invalid"]
 
 
 _locks = defaultdict(threading.Lock)
 
 
-def generate_and_store(session, category, pool="category", count=None):
-    """Try to add new questions. Never raises; returns the number inserted."""
+def generate_batch(session, category, pool="category", count=None):
+    """Ask Gemini for one batch and store it in ``pool`` for ``category``. Never raises.
+
+    Returns {"generated", "inserted", "duplicates", "invalid", "error"}; error is None, "disabled", "quota",
+    "failed" or "busy" (internal codes - callers show their own safe messages)."""
+    res = {"generated": 0, "inserted": 0, "duplicates": 0, "invalid": 0, "error": None}
     gen = get_generator()
     if not gen.enabled:
-        return 0
-    key = (pool, category.id)
-    lock = _locks[key]
+        res["error"] = "disabled"
+        return res
+    lock = _locks[(pool, category.id)]
     if not lock.acquire(blocking=False):
-        return 0  # another request is already generating for this slot
+        res["error"] = "busy"  # another request is already generating for this slot
+        return res
     try:
         count = count or current_app.config.get("GEMINI_BATCH_SIZE", 10)
         recent = session.scalars(select(Question.question_text).where(
@@ -223,16 +207,26 @@ def generate_and_store(session, category, pool="category", count=None):
         ).order_by(Question.id.desc()).limit(10)).all()
         raw = gen.generate(category.name, category.language, count,
                            CATEGORY_GUIDANCE.get(category.name, ""), recent)
-        inserted, rejected = store_questions(session, category, pool, raw)
-        log.info("Gemini %s/%s: inserted=%s rejected=%s", pool, category.name, inserted, rejected)
-        return inserted
+        res["generated"] = len(raw)
+        stored = store_detailed(session, category, pool, raw, source="ai")
+        res.update(inserted=stored["inserted"], duplicates=stored["duplicates"], invalid=stored["invalid"])
+        log.info("Gemini %s/%s: generated=%s inserted=%s duplicates=%s invalid=%s", pool, category.name,
+                 res["generated"], res["inserted"], res["duplicates"], res["invalid"])
     except QuotaExceeded as exc:
+        res["error"] = "quota"
         log.warning("Gemini quota/rate limit for %s: %s", category.name, exc)
     except GenerationError as exc:
+        res["error"] = "failed"
         log.error("Gemini generation failed for %s: %s", category.name, exc)
-    except Exception:  # noqa: BLE001 - never break gameplay because of AI problems
+    except Exception:  # noqa: BLE001 - never break gameplay or the admin page because of AI problems
+        res["error"] = "failed"
         log.exception("Unexpected error during question generation for %s", category.name)
         session.rollback()
     finally:
         lock.release()
-    return 0
+    return res
+
+
+def generate_and_store(session, category, pool="category", count=None):
+    """Compatibility wrapper used by gameplay top-ups: returns the number of questions inserted."""
+    return generate_batch(session, category, pool, count)["inserted"]
