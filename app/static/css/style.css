@@ -187,3 +187,13 @@ input,select,textarea{font:inherit;color:var(--text);background:var(--bg);border
 .option .opt-badge.ok{color:var(--success)}.option .opt-badge.bad{color:var(--danger)}
 .option.pending{border-color:var(--primary)}
 @media(max-width:600px){.option{flex-wrap:wrap}.option .opt-badge{margin-left:2.8rem;font-size:.85rem}}
+/* Admin: Manage Questions */
+.qa-card{margin-bottom:1.25rem}.qa-card h3{margin:0 0 .35rem}.qa-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1rem}
+.qa-actions{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin:1rem 0}.qa-sub{margin:1rem 0 .4rem}
+.dropzone{border:2px dashed var(--border);border-radius:14px;padding:1.4rem;text-align:center;cursor:pointer;background:var(--bg);margin-top:.5rem}
+.dropzone.over,.dropzone:focus-visible{border-color:var(--primary);background:var(--info-bg);outline:none}.dropzone p{margin:.2rem 0}
+.qa-stats{margin:1rem 0}.qa-table .qa-q{white-space:normal;min-width:220px}.qa-table tr.qa-bad td{background:var(--danger-bg)}
+.qa-problems li{padding:.25rem 0;color:var(--danger);overflow-wrap:anywhere}.qa-total th{background:var(--info-bg)}
+code{background:var(--info-bg);padding:.05rem .35rem;border-radius:6px;font-size:.85em;overflow-wrap:anywhere}
+
+.question-text,.option span:nth-child(2),#explanation{white-space:pre-line}
