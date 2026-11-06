@@ -77,13 +77,27 @@ def test_validator_accepts_good_and_rejects_bad():
             validate_question(case)
 
 
+def kn_good(i=1, **over):
+    d = {"question": f"ಕರ್ನಾಟಕದ ರಾಜಧಾನಿ ಯಾವುದು ಸಂಖ್ಯೆ {i}?", "option_a": "ಮೈಸೂರು", "option_b": "ಬೆಂಗಳೂರು",
+         "option_c": "ಮಂಗಳೂರು", "option_d": "ಹುಬ್ಬಳ್ಳಿ", "correct_answer": "B",
+         "explanation": "ಬೆಂಗಳೂರು ಕರ್ನಾಟಕದ ರಾಜಧಾನಿಯಾಗಿದೆ.", "difficulty": "easy"}
+    d.update(over)
+    return d
+
+
 def test_validator_language_rules():
-    kn = {**good(1), "question": "ಕರ್ನಾಟಕದ ರಾಜಧಾನಿ ಯಾವುದು?"}
+    kn = kn_good()
     assert validate_question(kn, "kn")
+    assert validate_question(kn_good(option_b="1947", option_a="1950", option_c="1962", option_d="1971"), "kn")  # digits are fine
     with pytest.raises(ValidationError):
         validate_question(good(2), "kn")  # English question in the Kannada category
+    for field in ("option_a", "explanation"):  # every field must be Kannada (only A-D markers stay English)
+        with pytest.raises(ValidationError):
+            validate_question(kn_good(**{field: "Bengaluru is the capital"}), "kn")
     with pytest.raises(ValidationError):
         validate_question(kn, "en")
+    with pytest.raises(ValidationError):  # Kannada leaking into an English category's options
+        validate_question({**good(3), "option_c": "ಬೆಂಗಳೂರು"}, "en")
 
 
 def test_hash_is_stable_across_formatting():
@@ -118,7 +132,7 @@ def test_invalid_items_are_skipped_not_stored(app):
 
 
 def test_kannada_prompt_and_validation(app):
-    kn_items = [{**good(i), "question": f"ಕನ್ನಡ ಪ್ರಶ್ನೆ ಸಂಖ್ಯೆ {i} ಯಾವುದು?"} for i in range(3)] + [good(9)]
+    kn_items = [kn_good(i) for i in range(3)] + [good(9)]
     http = FakeHttp(FakeResponse(payload=gemini_body(kn_items)))
     install(app, http)
     assert run_generate(app, "Kannada") == 3  # the English question is rejected

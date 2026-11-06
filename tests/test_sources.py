@@ -72,9 +72,11 @@ def test_import_all_stores_dedupes_and_survives_provider_failure(app, db):
     tapi = TriviaAPI(http=FakeGet(FakeResponse(status=503, payload={})))
     s = app.extensions["db_sessionmaker"]()
     first = import_all(s, ("opentdb", "trivia_api"), opentdb=otdb, trivia=tapi)
-    assert first["inserted"] == 5  # the first mapped category got the batch; later calls repeat the same fake data
+    # duplicates are detected per quiz mode AND category: the fake provider returns the same 5 questions for each of
+    # the 12 mapped categories, and each category is its own dataset
+    assert first["inserted"] == 12 * 5
     rows = db.scalars(select(Question).where(Question.source == "opentdb")).all()
-    assert len(rows) == 5 and len({r.question_hash for r in rows}) == 5
+    assert len(rows) == 60 and len({(r.category_id, r.question_hash) for r in rows}) == 60
     again = import_all(s, ("opentdb",), opentdb=OpenTriviaDB(
         http=FakeGet(FakeResponse(payload={"response_code": 0, "token": "t"}),
                      FakeResponse(payload={"response_code": 0, "results": [otdb_item(i) for i in range(5)]})),
