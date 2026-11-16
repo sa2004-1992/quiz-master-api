@@ -53,6 +53,8 @@ const ok = (c, m) => { if (!c) fail(m); };
   ok($('csvRows').querySelectorAll('tr.qa-bad').length === p.invalid + p.duplicates, 'problem rows are marked');
   ok($('csvProblems').textContent.includes('will NOT be imported') && $('csvProblems').textContent.includes(p.problems[0].reason), 'problems listed with reasons');
   ok($('csvImportBtn').disabled === false, 'Confirm Import enabled after a preview with valid rows');
+  ok(Array.from($('csvRows').querySelectorAll('tr')).some((tr) => tr.children[1].textContent === '\u0c95\u0ca8\u0ccd\u0ca8\u0ca1'), 'preview shows the Kannada dataset name');
+  ok(Array.from($('countsRows').querySelectorAll('tr')).some((tr) => tr.firstChild.textContent === 'Kannada'), 'counts table keeps the website name Kannada');
   const pv = calls.find((c) => c.url.endsWith('/csv/preview'));
   ok(pv.body.get('mode') === 'category' && pv.body.get('file').name === 'questions.csv', 'mode and file were sent');
   $('csvImportBtn').click(); await sleep(40);
