@@ -12,6 +12,7 @@ from tests.conftest import api, cat_id, login, make_app, play_through, register,
 from tests.test_ai import FakeHttp, FakeResponse, gemini_body, good, install, kn_good
 
 ADMIN = frozenset({"alice"})
+KN_NAME = "\u0c95\u0ca8\u0ccd\u0ca8\u0ca1"  # ಕನ್ನಡ - how datasets (CSV / Gemini) name the Kannada category
 
 
 @pytest.fixture
@@ -351,7 +352,7 @@ def test_kannada_generation_requires_kannada_everywhere(adm_app, admin):
     j = gen(admin, mode="category", category=str(cat_id(adm_app, "Kannada")), count=6, language="auto").get_json()
     assert j["saved"] == 3 and j["invalid"] == 3                                  # English / mixed-language items are rejected
     assert "Kannada" in http.calls[0]["json"]["contents"][0]["parts"][0]["text"]
-    assert j["details"][0]["category"] == "Kannada"
+    assert j["details"][0]["category"] == KN_NAME  # the generated dataset uses the dataset name
 
 
 def test_language_rules_and_input_validation(adm_app, admin):
@@ -367,7 +368,7 @@ def test_language_rules_and_input_validation(adm_app, admin):
     assert gen(admin, mode="all", count=5, language="fr").status_code == 400
     assert admin.post("/api/admin/questions/generate", data="nope", content_type="text/plain").status_code == 400
     j = gen(admin, mode="all", count=10, language="kn").get_json()
-    assert [d["category"] for d in j["details"]] == ["Kannada"]                          # Kannada only
+    assert [d["category"] for d in j["details"]] == [KN_NAME]                            # Kannada only
 
 
 def test_invalid_gemini_responses_save_nothing_and_leak_nothing(adm_app, admin):
@@ -598,7 +599,8 @@ def test_admin_page_javascript_end_to_end(adm_app, admin, tmp_path):
     if not node or subprocess.run([node, "-e", "require('jsdom')"], capture_output=True, env=env).returncode != 0:
         pytest.skip("node + jsdom not available (npm install jsdom; set NODE_PATH to its node_modules)")
     install(adm_app, FakeHttp(batch("UI")))
-    rows = [kidney(), row("Bad answer marker for this question?", ans="Z"), row("Unknown category for this question?", cat="Nope")]
+    rows = [kidney(), row("Bad answer marker for this question?", ans="Z"), row("Unknown category for this question?", cat="Nope"),
+            ["ಕನ್ನಡದ ಮೊದಲ ಕವಿ ಯಾರು?", "ಪಂಪ", "ರನ್ನ", "ಜನ್ನ", "ಹರಿಹರ", "A", "ಪಂಪ ಕನ್ನಡದ ಆದಿಕವಿಗಳಲ್ಲಿ ಒಬ್ಬರು.", KN_NAME]]
     data = make_csv(rows)
     html = admin.get("/admin/questions").get_data(as_text=True)
     counts_before = admin.get("/api/admin/questions/counts").get_json()
@@ -611,3 +613,146 @@ def test_admin_page_javascript_end_to_end(adm_app, admin, tmp_path):
     path.write_text(json.dumps(fixture), encoding="utf-8")
     r = subprocess.run(["node", "tests/js/admin_ui_check.js", str(path)], capture_output=True, text=True, env=env, cwd=".")
     assert r.returncode == 0 and "admin ui ok" in r.stdout, r.stderr + r.stdout
+
+
+# ===================================================================== Kannada dataset name (ಕನ್ನಡ) - datasets only
+PAMPA = ["ಕನ್ನಡದ ಮೊದಲ ಕವಿ ಯಾರು?", "ಪಂಪ", "ರನ್ನ", "ಜನ್ನ", "ಹರಿಹರ", "A", "ಪಂಪ ಕನ್ನಡದ ಆದಿಕವಿಗಳಲ್ಲಿ ಒಬ್ಬರು.", KN_NAME]
+
+
+def test_csv_accepts_the_kannada_script_name_and_saves_to_the_existing_category(adm_app, admin):
+    s = adm_app.extensions["db_sessionmaker"]()
+    kn = s.scalars(select(Category).where(Category.name == "Kannada")).one()
+    before = (kn.id, kn.slug, kn.position, kn.language, s.scalar(select(func.count(Category.id))))
+    s.close()
+    j = post_csv(admin, make_csv([PAMPA]), "category").get_json()
+    assert j["ok"] and (j["valid"], j["invalid"]) == (1, 0)
+    assert j["preview"][0]["category"] == KN_NAME                                    # the preview shows the dataset name
+    assert "unknown category" not in json.dumps(j, ensure_ascii=False)
+    r = post_csv(admin, make_csv([PAMPA]), "category", step="import").get_json()
+    assert r["imported"] == 1
+    s = adm_app.extensions["db_sessionmaker"]()
+    q = s.scalars(select(Question).where(Question.question_text == PAMPA[0])).one()
+    assert q.category_id == before[0] and q.pool == "category"                       # saved to the EXISTING Kannada category
+    kn2 = s.scalars(select(Category).where(Category.name == "Kannada")).one()
+    assert (kn2.id, kn2.slug, kn2.position, kn2.language, s.scalar(select(func.count(Category.id)))) == before  # nothing new or changed
+    assert s.scalars(select(Category).where(Category.name == KN_NAME)).first() is None  # no second Kannada category
+    s.close()
+
+
+@pytest.mark.parametrize("mode", ["category", "all", "daily"])
+def test_kannada_script_name_works_in_every_mode(adm_app, admin, mode):
+    assert post_csv(admin, make_csv([PAMPA]), mode, step="import").get_json()["imported"] == 1
+    items = admin.get(f"/api/admin/questions/list?mode={mode}&category={cat_id(adm_app, 'Kannada')}").get_json()["items"]
+    assert any(i["question"] == PAMPA[0] and i["category"] == "Kannada" for i in items)   # the site still calls it Kannada
+
+
+def test_the_old_kannada_name_is_still_accepted(adm_app, admin):
+    old = PAMPA[:-1] + ["Kannada"]
+    j = post_csv(admin, make_csv([old]), "category").get_json()
+    assert (j["valid"], j["invalid"]) == (1, 0) and j["preview"][0]["category"] == KN_NAME   # previewed with the dataset name
+    assert post_csv(admin, make_csv([old]), "all", step="import").get_json()["imported"] == 1
+
+
+@pytest.mark.parametrize("variant", [" ಕನ್ನಡ ", "ಕನ್ನಡ\u200d", "\ufeffಕನ್ನಡ", "kannada", "KANNADA"])
+def test_kannada_name_variants_are_tolerated(admin, variant):
+    import unicodedata
+    j = post_csv(admin, make_csv([PAMPA[:-1] + [variant]])).get_json()
+    assert j["valid"] == 1, (variant, j)
+    nfd = unicodedata.normalize("NFD", KN_NAME)
+    assert post_csv(admin, make_csv([PAMPA[:-1] + [nfd]])).get_json()["valid"] == 1
+
+
+def test_selected_kannada_category_matches_dataset_name_rows(adm_app, admin):
+    kn = str(cat_id(adm_app, "Kannada"))
+    assert post_csv(admin, make_csv([PAMPA]), "category", kn).get_json()["valid"] == 1
+    j = post_csv(admin, make_csv([PAMPA]), "category", str(cat_id(adm_app, "Math"))).get_json()
+    assert j["invalid"] == 1 and "does not match the selected category" in j["problems"][0]["reason"]
+    english = row("An English question in the Kannada category?", cat=KN_NAME)
+    j = post_csv(admin, make_csv([english])).get_json()
+    assert j["invalid"] == 1 and "must be written in Kannada" in j["problems"][0]["reason"]   # language rule still applies
+
+
+def test_other_category_names_are_unchanged_in_datasets(adm_app, admin):
+    j = post_csv(admin, make_csv([row("A question about numbers and sums?", cat="Math"), PAMPA])).get_json()
+    assert [r["category"] for r in j["preview"]] == ["Math", KN_NAME]
+    assert post_csv(admin, make_csv([row("A question about numbers and sums?", cat="ಗಣಿತ")])).get_json()["invalid"] == 1   # no other aliases
+
+
+def test_downloaded_template_uses_the_kannada_script_name_and_is_importable(adm_app, admin):
+    text = admin.get("/api/admin/questions/csv/template").get_data(as_text=True)
+    assert text.splitlines()[0] == ",".join(HEADER) and KN_NAME in text and "Kannada" not in text
+    assert "General Knowledge (GK)" in text
+    j = post_csv(admin, text.encode("utf-8")).get_json()
+    assert (j["total"], j["valid"], j["invalid"], j["duplicates"]) == (2, 2, 0, 0)   # the template validates as-is
+    assert [r["category"] for r in j["preview"]] == ["General Knowledge (GK)", KN_NAME]
+
+
+def test_csv_export_uses_the_dataset_name_and_round_trips(adm_app, admin):
+    post_csv(admin, make_csv([PAMPA, row("A question about numbers and sums?", cat="Math")]), "category", step="import")
+    r = admin.get("/api/admin/questions/csv/export?mode=category")
+    assert r.status_code == 200 and r.mimetype == "text/csv" and "attachment" in r.headers["Content-Disposition"]
+    raw = r.get_data()
+    assert raw.startswith("\ufeff".encode("utf-8"))
+    rows = list(csv.reader(io.StringIO(raw.decode("utf-8-sig"))))
+    assert rows[0] == HEADER and all(len(x) == 8 for x in rows)
+    cats = {x[7] for x in rows[1:]}
+    assert KN_NAME in cats and "Kannada" not in cats and "Math" in cats and "History" in cats   # only Kannada is renamed
+    assert any(x[0] == PAMPA[0] and x[7] == KN_NAME for x in rows)
+    kn_only = admin.get(f"/api/admin/questions/csv/export?mode=category&category={cat_id(adm_app, 'Kannada')}").get_data(as_text=True)
+    assert {x[7] for x in list(csv.reader(io.StringIO(kn_only.lstrip("\ufeff"))))[1:]} == {KN_NAME}
+    # the export can be imported again into another mode (Kannada rows map back to the existing category)
+    only_kn = admin.get(f"/api/admin/questions/csv/export?mode=category&category={cat_id(adm_app, 'Kannada')}").get_data()
+    j = post_csv(admin, only_kn, "daily").get_json()
+    assert j["invalid"] == 0 and j["valid"] >= 1 and all(p["category"] == KN_NAME for p in j["preview"])
+    # other modes export only their own questions; bad input is rejected; admins only
+    assert KN_NAME not in admin.get("/api/admin/questions/csv/export?mode=daily").get_data(as_text=True)
+    assert admin.get("/api/admin/questions/csv/export?mode=nope").status_code == 400
+    assert admin.get("/api/admin/questions/csv/export?mode=all&ids=1,abc").status_code == 400
+    assert admin.get("/api/admin/questions/csv/export?mode=all&category=99999").status_code == 400
+    bob = adm_app.test_client()
+    register(bob, "bob")
+    login(bob, "bob")
+    assert bob.get("/api/admin/questions/csv/export?mode=category").status_code == 403
+    assert adm_app.test_client().get("/api/admin/questions/csv/export?mode=category").status_code == 401
+
+
+def test_gemini_kannada_dataset_uses_the_dataset_name(adm_app, admin):
+    http = FakeHttp(FakeResponse(payload=gemini_body([{**kn_good(i), "category_name": "something the model invented"} for i in range(4)])))
+    install(adm_app, http)
+    j = gen(admin, mode="category", category=str(cat_id(adm_app, "Kannada")), count=4, language="kn").get_json()
+    assert j["saved"] == 4 and j["details"][0]["category"] == KN_NAME and len(j["ids"]) == 4
+    prompt = http.calls[0]["json"]["contents"][0]["parts"][0]["text"]
+    assert f'category_name (always exactly "{KN_NAME}")' in prompt
+    assert "Write every question, option and explanation in Kannada" in prompt
+    s = adm_app.extensions["db_sessionmaker"]()
+    assert {q.category_id for q in s.scalars(select(Question).where(Question.id.in_(j["ids"])))} == {cat_id(adm_app, "Kannada")}
+    s.close()
+    dl = admin.get(f"/api/admin/questions/csv/export?mode=category&ids={','.join(map(str, j['ids']))}").get_data(as_text=True)
+    rows = list(csv.reader(io.StringIO(dl.lstrip("\ufeff"))))
+    assert len(rows) == 5 and {x[7] for x in rows[1:]} == {KN_NAME}                  # the generated dataset says the dataset name
+    other = FakeHttp(FakeResponse(payload=gemini_body([good(i, prefix="Eng") for i in range(3)])))
+    install(adm_app, other)
+    gen(admin, mode="category", category=str(cat_id(adm_app, "Science")), count=3)
+    assert 'category_name (always exactly "Science")' in other.calls[0]["json"]["contents"][0]["parts"][0]["text"]
+
+
+def test_the_website_keeps_showing_kannada_everywhere_else(adm_app, admin):
+    """Only datasets use the Kannada-script name; every page the user sees keeps the category's real name."""
+    post_csv(admin, make_csv([PAMPA]), "category", step="import")
+    g = start(admin, "category", cat_id(adm_app, "Kannada"))
+    assert state(admin, g)["category"] == "Kannada" and state(admin, g)["question"]["category"] == "Kannada"
+    html_pages = {p: admin.get(p).get_data(as_text=True) for p in
+                  ["/", "/quizzes", "/all-quiz", "/history", "/profile", "/leaderboard", "/performance", "/achievements",
+                   "/feedback", f"/quiz/{g}", "/bookmarks"]}
+    for path, html in html_pages.items():
+        assert KN_NAME not in html, path
+    assert "Kannada" in html_pages["/quizzes"] and "Kannada" in html_pages["/profile"]
+    admin_html = admin.get("/admin/questions").get_data(as_text=True)
+    assert ">Kannada</option>" in admin_html                                        # dropdown labels keep the website name
+    assert KN_NAME not in admin_html.replace("&#3221;&#3240;&#3277;&#3240;&#3233;", "")  # (only the CSV help text spells it out)
+    counts = admin.get("/api/admin/questions/counts").get_json()
+    assert "Kannada" in [r["name"] for r in counts["rows"]] and KN_NAME not in [r["name"] for r in counts["rows"]]
+    from app.categories import CATEGORY_NAMES
+    s = adm_app.extensions["db_sessionmaker"]()
+    assert [c.name for c in s.scalars(select(Category).order_by(Category.position))] == CATEGORY_NAMES   # 56 names, unchanged
+    s.close()
