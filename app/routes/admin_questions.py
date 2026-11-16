@@ -72,6 +72,29 @@ def csv_template():
                     headers={"Content-Disposition": "attachment; filename=questions_template.csv"})
 
 
+@bp.route("/api/admin/questions/csv/export")
+@admin_required
+def csv_export():
+    """Download stored questions of ONE mode (optionally one category or specific ids) in the 8-column CSV format.
+    category_name uses the dataset name, so Kannada questions export as the Kannada-script name."""
+    db = get_session()
+    try:
+        mode, category = _mode_and_category(db, request.args)
+        raw_ids = (request.args.get("ids") or "").strip()
+        ids = None
+        if raw_ids:
+            parts = raw_ids.split(",")
+            if len(parts) > 500 or not all(p.strip().isdigit() for p in parts):
+                raise ValueError("Invalid question ids.")
+            ids = [int(p) for p in parts]
+    except ValueError as exc:
+        return _err(str(exc))
+    data, n = question_bank.export_csv(db, mode, category.id if category else None, ids)
+    name = f"questions_{mode}" + (f"_{category.slug}" if category else "") + ".csv"
+    return Response(data, mimetype="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename={name}", "X-Question-Count": str(n)})
+
+
 def _read_csv_request():
     db = get_session()
     mode, category = _mode_and_category(db, request.form)
