@@ -81,14 +81,15 @@ Pre-generate questions (recommended; first-time play otherwise only has the 2-pe
 ```bash
 flask --app run generate-questions --category "Python" --batches 3
 flask --app run generate-questions --batches 2            # all 56 categories (watch the free-tier quota)
-flask --app run generate-questions --pool daily --batches 5
+flask --app run generate-questions --pool all --batches 3        # All Quiz dataset
+flask --app run generate-questions --pool daily --batches 5      # Daily Quiz dataset
 ```
 
 Import ready-made questions (free, no API key; stored in the same table and reused):
 
 ```bash
 flask --app run import-questions --source all --rounds 5
-flask --app run import-questions --source opentdb --pool daily --rounds 3
+flask --app run import-questions --source opentdb --pool all --rounds 3     # --pool category | all | daily
 ```
 Open Trivia DB allows 50 questions per request and one request every 5 seconds, so imports are slow
 by design. Each run returns a random sample, so repeat it with `--rounds`; duplicates are skipped.
@@ -171,6 +172,54 @@ Optional browser-side tests (they run the real `quiz.js` in a DOM and are skippe
 * **Clear All Data** (type DELETE to confirm): removes the user's games, answers, pointers, daily
   records, streak and bookmarks; keeps the account, preferences, questions and everyone else's data.
   Because daily records are removed, today's Daily Challenge can be played again afterwards.
+
+## Question management (CSV import + Gemini) - three separate datasets
+
+Every question belongs to exactly **one quiz mode**, stored in `questions.pool` (also exposed as `Question.quiz_mode`):
+`category` = Quiz 1 (Category Quizzes), `all` = Quiz 2 (All Quiz), `daily` = Quiz 3 (Daily Quiz). Each quiz reads only its
+own mode, so a question imported or generated for one mode never appears in another (nothing is copied automatically; the
+built-in 2-per-category starter bank is seeded once into each mode). Duplicates are prevented **per mode and category**.
+The category is stored as `category_id` (a foreign key to `categories`); the CSV and the admin page use `category_name`.
+
+**Who can manage questions:** set `ADMIN_USERNAMES` (comma-separated usernames, e.g. `ADMIN_USERNAMES=sagar123`). Those users
+see **Manage Questions** in the sidebar (nobody else does) at `/admin/questions`. With the variable unset the tools are off.
+
+**Kannada in datasets:** the website always calls the category **Kannada** (same id, slug and relationships - nothing
+changes on any page). Only *datasets* use the Kannada-script name `ಕನ್ನಡ` in the `category_name` column: CSV upload and
+preview, the downloaded template, the CSV export (admin page: *Export CSV* in "Browse stored questions", or the
+download link after a Gemini run) and Gemini-generated datasets. Uploads still accept the old name `Kannada`; both map
+to the one existing category, and no second category is created.
+
+**CSV import** (works without Gemini). Header must be exactly `question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,category_name`
+(UTF-8, Kannada supported; no `id`, no `quiz_mode`; `correct_answer` is exactly A-D; `category_name` is one of the 56
+categories). On the page: 1) pick the **quiz mode**; for *Category Quiz* also pick a category (or "Use category_name from each
+row" - a chosen category must match every row); *All Quiz* and *Daily Quiz* use each row's `category_name`; 2) choose or
+drag in the file; 3) **Validate & Preview** (valid / invalid / duplicate counts, per-row reasons - nothing is saved yet);
+4) **Confirm Import** - the file is validated again on the server and only valid rows are saved. Limits: `CSV_MAX_BYTES`
+(2 MB) and `CSV_MAX_ROWS` (2000). Daily Quiz imports go into the unused Daily pool and follow the existing scheduler
+(max 50 per day); they never change a daily set that was already created.
+
+**Gemini generation** (needs `GEMINI_API_KEY`, `GEMINI_MODEL`; the key stays on the server). Pick the mode (category for
+Category Quiz), the number of questions (1-`ADMIN_MAX_GENERATE`, default 30; 10 per Gemini call) and the language
+(Auto: Kannada for the Kannada category, English otherwise). *All Quiz* / *Daily Quiz* generation fills the categories that
+have the fewest stored questions first (Daily excludes Kannada unless you pick Kannada). Kannada questions need the
+question, all four options and the explanation in Kannada. Results are shown only after the questions are saved; quota,
+network and invalid-response problems are reported without internal details. Generation is rate limited
+(`ADMIN_GENERATE_RATE_LIMIT`, default 6 per minute). Gunicorn's `--timeout 120` covers a full 30-question request.
+
+**Duplicates:** text is normalised (case, spaces, punctuation) and hashed for exact matches; a reworded question is flagged
+when its wording is nearly identical, its numbers are the same **and** its correct answer is the same. It is a heuristic,
+not a guarantee, and existing questions are never deleted or changed.
+
+**Upgrading an existing database** is automatic and non-destructive (`migrations/004_question_modes.sql` has the same SQL
+for PostgreSQL): the `questions` constraints are extended to allow the `all` mode and to detect duplicates per mode +
+category; no rows, ids, games, answers, progress pointers or daily assignments change. On SQLite (local development) the
+table is rebuilt with all rows and ids copied. **Note:** All Quiz now reads its *own* dataset, so on an existing site it starts with the 2-per-category
+starter bank until you import or generate All Quiz questions (category questions are intentionally not copied).
+
+**Testing the three datasets:** the admin page shows stored counts per mode and category, and *Browse stored questions*
+lists one mode (and category) at a time. `pytest tests/test_question_management.py` covers CSV (all three modes, validation,
+Kannada, duplicates), mocked Gemini (all three modes, failures, quota), isolation and the database upgrade.
 
 ## Quiz mode separation (statistics)
 
