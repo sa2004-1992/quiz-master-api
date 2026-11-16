@@ -8,12 +8,14 @@ and existing questions are never modified or deleted.
 import csv
 import io
 import re
+import unicodedata
 from collections import defaultdict
 from difflib import SequenceMatcher
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+from ..categories import DATASET_NAMES, dataset_name
 from ..models import Category, Question
 from .question_validator import ValidationError, normalize_text, question_hash, validate_question
 
@@ -21,9 +23,24 @@ MODES = ("category", "all", "daily")
 MODE_LABELS = {"category": "Category Quiz", "all": "All Quiz", "daily": "Daily Quiz"}
 CSV_COLUMNS = ["question_text", "option_a", "option_b", "option_c", "option_d", "correct_answer", "explanation",
                "category_name"]
-CSV_TEMPLATE = ('question_text,option_a,option_b,option_c,option_d,correct_answer,explanation,category_name\n'
-                '"What is the capital of India?","Mumbai","New Delhi","Bengaluru","Chennai","B",'
-                '"New Delhi is the capital of India.","General Knowledge (GK)"\n')
+KN_TEMPLATE_ROW = [
+    "\u0C95\u0CA8\u0CCD\u0CA8\u0CA1\u0CA6 \u0CAE\u0CCA\u0CA6\u0CB2 \u0C95\u0CB5\u0CBF \u0CAF\u0CBE\u0CB0\u0CC1?",
+    "\u0CAA\u0C82\u0CAA", "\u0CB0\u0CA8\u0CCD\u0CA8", "\u0C9C\u0CA8\u0CCD\u0CA8", "\u0CB9\u0CB0\u0CBF\u0CB9\u0CB0", "A",
+    "\u0CAA\u0C82\u0CAA \u0C95\u0CA8\u0CCD\u0CA8\u0CA1\u0CA6 \u0C86\u0CA6\u0CBF\u0C95\u0CB5\u0CBF\u0C97\u0CB3\u0CB2\u0CCD\u0CB2\u0CBF "
+    "\u0C92\u0CAC\u0CCD\u0CAC\u0CB0\u0CC1.", DATASET_NAMES["Kannada"]]
+
+
+def _template():
+    buf = io.StringIO()
+    buf.write(",".join(CSV_COLUMNS) + "\n")  # plain header line, quoted example rows
+    w = csv.writer(buf, lineterminator="\n", quoting=csv.QUOTE_ALL)
+    w.writerow(["What is the capital of India?", "Mumbai", "New Delhi", "Bengaluru", "Chennai", "B",
+                "New Delhi is the capital of India.", "General Knowledge (GK)"])
+    w.writerow(KN_TEMPLATE_ROW)  # Kannada questions use the dataset name for the category
+    return buf.getvalue()
+
+
+CSV_TEMPLATE = _template()
 
 
 # ----------------------------------------------------------------------------- duplicate detection
@@ -152,8 +169,21 @@ class CsvError(Exception):
     """A problem with the file as a whole (shown to the administrator)."""
 
 
+def _norm_category(name):
+    """Tolerant comparison key: Unicode NFC, no zero-width characters, collapsed spaces, case-insensitive."""
+    name = unicodedata.normalize("NFC", name or "")
+    name = re.sub("[\u200b\u200c\u200d\u2060\ufeff]", "", name)
+    return re.sub(r"\s+", " ", name).strip().casefold()
+
+
 def _category_lookup(session):
-    return {re.sub(r"\s+", " ", c.name).strip().casefold(): c for c in session.scalars(select(Category))}
+    """Dataset category name -> Category. Accepts the website name ("Kannada") and the dataset name
+    (the Kannada-script name) for the SAME existing category; no second category is ever created."""
+    out = {}
+    for c in session.scalars(select(Category)):
+        out[_norm_category(c.name)] = c
+        out[_norm_category(dataset_name(c.name))] = c
+    return out
 
 
 def analyze_csv(session, data, filename, mode, selected_category=None, max_bytes=2 * 1024 * 1024, max_rows=2000):
@@ -210,7 +240,7 @@ def analyze_csv(session, data, filename, mode, selected_category=None, max_bytes
                 if raw["correct_answer"] not in ("A", "B", "C", "D"):
                     errors.append("correct_answer must be exactly A, B, C or D")
                 name = raw["category_name"]
-                cat = categories.get(re.sub(r"\s+", " ", name).strip().casefold()) if name else None
+                cat = categories.get(_norm_category(name)) if name else None
                 if not name:
                     errors.append("category_name is missing")
                 elif cat is None:
@@ -246,7 +276,7 @@ def public_report(report, limit_rows=50, limit_problems=100):
     def row(r):
         d = r["data"] or {}
         return {"row": r["ref"], "line": r["line"], "status": r["status"], "reason": r["reason"],
-                "category": r["category"].name if r["category"] else "",
+                "category": dataset_name(r["category"].name) if r["category"] else "",
                 "question": (d.get("question_text") or "")[:160], "answer": d.get("correct_answer", "")}
     problems = [row(r) for r in report["results"] if r["status"] != "valid"]
     return {"mode": report["mode"], "mode_label": MODE_LABELS[report["mode"]], "total": report["total"],
@@ -279,3 +309,24 @@ def questions_for(session, mode, category_id=None, page=1, page_size=20):
     items = [{"id": q.id, "mode": q.pool, "category": name, "question": q.question_text, "options": q.options(),
               "correct_answer": q.correct_answer, "explanation": q.explanation, "source": q.source} for q, name in rows]
     return {"items": items, "page": page, "pages": pages, "total": total}
+
+
+def export_csv(session, mode, category_id=None, ids=None):
+    """The 8-column CSV of stored questions of ONE mode (optionally one category / specific ids), as UTF-8 with a BOM
+    (Excel-friendly; the importer accepts it). category_name uses the dataset name (Kannada-script name for Kannada)."""
+    if mode not in MODES:
+        raise ValueError("invalid mode")
+    where = [Question.pool == mode]
+    if category_id:
+        where.append(Question.category_id == category_id)
+    if ids:
+        where.append(Question.id.in_(ids))
+    rows = session.execute(select(Question, Category.name).join(Category, Category.id == Question.category_id)
+                           .where(*where).order_by(Question.id)).all()
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(CSV_COLUMNS)
+    for q, cname in rows:
+        w.writerow([q.question_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer, q.explanation,
+                    dataset_name(cname)])
+    return ("\ufeff" + buf.getvalue()).encode("utf-8"), len(rows)

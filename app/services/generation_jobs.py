@@ -3,7 +3,7 @@ import math
 
 from sqlalchemy import func, select
 
-from ..categories import KANNADA
+from ..categories import KANNADA, dataset_name
 from ..models import Category, Question
 from .ai_question_generator import generate_batch, get_generator
 from .question_bank import MODES
@@ -60,13 +60,14 @@ def run(session, mode, category, count, language, batch_size=10):
     """Generate and store questions. Returns a result dict; ``ok`` is True only if something was saved."""
     if not get_generator().enabled:
         return {"ok": False, "error": ERRORS["disabled"], "requested": count, "generated": 0, "saved": 0,
-                "duplicates": 0, "invalid": 0, "details": []}
+                "duplicates": 0, "invalid": 0, "details": [], "ids": []}
     tasks = plan(session, mode, category, count, language, batch_size)
     total = {"generated": 0, "saved": 0, "duplicates": 0, "invalid": 0}
-    details, error, failures = [], None, 0
+    details, error, failures, ids = [], None, 0, []
     for cat, n in tasks:
         res = generate_batch(session, cat, mode, n)
-        details.append({"category": cat.name, "requested": n, "generated": res["generated"], "saved": res["inserted"],
+        ids.extend(res["ids"])
+        details.append({"category": dataset_name(cat.name), "requested": n, "generated": res["generated"], "saved": res["inserted"],
                         "duplicates": res["duplicates"], "invalid": res["invalid"], "error": res["error"]})
         total["generated"] += res["generated"]
         total["saved"] += res["inserted"]
@@ -85,4 +86,5 @@ def run(session, mode, category, count, language, batch_size=10):
     message = ERRORS.get(error) if error else None
     if message and total["saved"]:
         message += f" {total['saved']} question(s) were saved before it stopped."
-    return {"ok": total["saved"] > 0 or not error, "error": message, "requested": count, **total, "details": details}
+    return {"ok": total["saved"] > 0 or not error, "error": message, "requested": count, **total, "details": details,
+            "ids": ids}

@@ -17,7 +17,7 @@ import requests
 from flask import current_app
 from sqlalchemy import select
 
-from ..categories import CATEGORY_GUIDANCE
+from ..categories import CATEGORY_GUIDANCE, dataset_name
 from ..models import Category, Question
 from .question_bank import store_detailed
 
@@ -80,7 +80,7 @@ def build_prompt(category_name, language, count, guidance="", avoid=()):
         f"{avoid_txt}\n"
         "Return ONLY a JSON array (no markdown, no commentary). Each item must have exactly these keys: "
         "question, option_a, option_b, option_c, option_d, correct_answer (\"A\"|\"B\"|\"C\"|\"D\"), "
-        "explanation, difficulty (\"easy\"|\"medium\"|\"hard\")."
+        f"explanation, difficulty (\"easy\"|\"medium\"|\"hard\"), category_name (always exactly \"{dataset_name(category_name)}\")."
     )
 
 
@@ -191,7 +191,7 @@ def generate_batch(session, category, pool="category", count=None):
 
     Returns {"generated", "inserted", "duplicates", "invalid", "error"}; error is None, "disabled", "quota",
     "failed" or "busy" (internal codes - callers show their own safe messages)."""
-    res = {"generated": 0, "inserted": 0, "duplicates": 0, "invalid": 0, "error": None}
+    res = {"generated": 0, "inserted": 0, "duplicates": 0, "invalid": 0, "error": None, "ids": []}
     gen = get_generator()
     if not gen.enabled:
         res["error"] = "disabled"
@@ -208,8 +208,12 @@ def generate_batch(session, category, pool="category", count=None):
         raw = gen.generate(category.name, category.language, count,
                            CATEGORY_GUIDANCE.get(category.name, ""), recent)
         res["generated"] = len(raw)
+        for item in raw:  # the dataset's category_name is set by the server, never trusted from the model
+            if isinstance(item, dict):
+                item["category_name"] = dataset_name(category.name)
         stored = store_detailed(session, category, pool, raw, source="ai")
-        res.update(inserted=stored["inserted"], duplicates=stored["duplicates"], invalid=stored["invalid"])
+        res.update(inserted=stored["inserted"], duplicates=stored["duplicates"], invalid=stored["invalid"],
+                   ids=stored["ids"])
         log.info("Gemini %s/%s: generated=%s inserted=%s duplicates=%s invalid=%s", pool, category.name,
                  res["generated"], res["inserted"], res["duplicates"], res["invalid"])
     except QuotaExceeded as exc:
