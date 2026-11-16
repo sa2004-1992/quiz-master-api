@@ -1,8 +1,8 @@
 {% extends "auth_base.html" %}
 {% block title %}Login{% endblock %}
 {% block content %}
-<h1>Welcome back</h1>
-<p class="muted">Log in to continue your quizzes.</p>
+<h1>Login for register account</h1>
+<p class="muted"></p>
 {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
 <form method="post" novalidate data-validate="login">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -14,5 +14,5 @@
   <label class="check"><input type="checkbox" name="remember"> Remember me</label>
   <button class="btn btn-primary btn-block" type="submit">Login</button>
 </form>
-<p class="auth-switch">New here? <a href="{{ url_for('auth.register') }}">Create an account</a></p>
+<p class="auth-switch">don't have an account? <a href="{{ url_for('auth.register') }}">Create an account</a></p>
 {% endblock %}

@@ -18,7 +18,8 @@
 <article class="card qa-card" id="csvCard">
   <h3>Import from CSV</h3>
   <p class="muted small">Exactly 8 columns: <code>{{ csv_columns|join(', ') }}</code>. UTF-8 (Kannada supported). No id or quiz mode column. Max {{ max_mb }} MB.
-    <a href="{{ url_for('qadmin.csv_template') }}">Download a template</a>.</p>
+    <a href="{{ url_for('qadmin.csv_template') }}">Download a template</a>.
+    In a CSV, the Kannada category is written <code>&#3221;&#3240;&#3277;&#3240;&#3233;</code> (the old name <code>Kannada</code> is still accepted).</p>
   <div class="qa-row">
     <div class="field"><label for="csvMode">Quiz mode</label>
       <select id="csvMode">{% for v, label in modes %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></div>
@@ -60,6 +61,7 @@
     <button type="submit" class="btn btn-primary" id="genBtn">Generate Questions</button>
   </form>
   <div id="genResult" class="alert" role="status" hidden></div>
+  <p id="genDownload" hidden></p>
   <div class="table-wrap" id="genDetailsWrap" hidden><table class="table qa-table"><thead><tr><th>Category</th><th class="num">Generated</th><th class="num">Saved</th><th class="num">Duplicates</th><th class="num">Invalid</th></tr></thead><tbody id="genDetails"></tbody></table></div>
 </article>
 
@@ -71,7 +73,8 @@
     <div class="field"><label for="brCategory">Category</label>
       <select id="brCategory"><option value="">All categories</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
   </div>
-  <div class="qa-actions"><button type="button" class="btn btn-ghost" id="brBtn">Show questions</button></div>
+  <div class="qa-actions"><button type="button" class="btn btn-ghost" id="brBtn">Show questions</button>
+    <a class="btn btn-ghost" id="brExport" href="#">Export CSV</a></div>
   <div class="table-wrap" id="brWrap" hidden><table class="table qa-table"><thead><tr><th>ID</th><th>Category</th><th>Question</th><th>Answer</th><th>Source</th></tr></thead><tbody id="brRows"></tbody></table></div>
   <div class="pagination" id="brPager" hidden><button type="button" class="btn btn-ghost btn-sm" id="brPrev">&laquo; Previous</button><span class="muted" id="brInfo"></span><button type="button" class="btn btn-ghost btn-sm" id="brNext">Next &raquo;</button></div>
 </article>
